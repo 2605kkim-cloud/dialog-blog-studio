@@ -1,0 +1,1808 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dialog Blog Studio — 对话博客 + 卡拉OK字幕</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<style>
+:root {
+  --bg: #0f1117; --panel: #181b24; --panel2: #1e2230;
+  --border: #2b3044; --text: #e8eaf0; --muted: #8a90a3;
+  --him: #4c8dff; --her: #ff5c8a; --accent: #4c8dff;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: 'Microsoft YaHei', system-ui, sans-serif; min-height: 100vh; }
+.app { max-width: 980px; margin: 0 auto; padding: 20px 16px 60px; }
+h1 { font-size: 22px; margin-bottom: 4px; }
+.sub { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+
+/* Tabs */
+.tabs { display: flex; gap: 6px; margin-bottom: 16px; }
+.tabs button {
+  flex: 1; padding: 12px; background: var(--panel); color: var(--muted);
+  border: 1px solid var(--border); border-radius: 10px; font-size: 14px; cursor: pointer;
+}
+.tabs button.on { background: var(--panel2); color: var(--text); border-color: var(--accent); }
+
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
+.panel h2 { font-size: 15px; margin-bottom: 12px; color: var(--text); }
+.panel h3 { font-size: 13px; margin: 14px 0 8px; color: var(--muted); }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+.hint { font-size: 12px; color: var(--muted); line-height: 1.6; }
+button.btn {
+  background: var(--accent); color: #fff; border: 0; padding: 10px 20px;
+  border-radius: 8px; font-size: 14px; cursor: pointer;
+}
+button.btn:disabled { opacity: .4; cursor: not-allowed; }
+button.ghost {
+  background: transparent; color: var(--text); border: 1px solid var(--border);
+  padding: 8px 14px; border-radius: 8px; font-size: 13px; cursor: pointer;
+}
+input[type=text], input[type=password], select, textarea {
+  background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 9px 12px; font-size: 14px; font-family: inherit;
+}
+textarea { width: 100%; resize: vertical; }
+input[type=range] { accent-color: var(--accent); }
+input[type=color] { width: 42px; height: 32px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel2); padding: 2px; cursor: pointer; }
+
+/* Drop zone */
+#dropZone {
+  border: 2px dashed var(--border); border-radius: 12px; padding: 32px;
+  text-align: center; color: var(--muted); cursor: pointer; transition: .2s;
+}
+#dropZone.over { border-color: var(--accent); background: rgba(76,141,255,.06); }
+#docInfo { font-size: 13px; color: var(--text); margin-top: 10px; }
+
+/* Dialog editor */
+.line { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 8px; }
+.line .role {
+  flex: 0 0 46px; height: 46px; border-radius: 8px; border: 1px solid var(--border);
+  font-size: 18px; cursor: pointer; color: #fff;
+}
+.line.him .role { background: var(--him); }
+.line.her .role { background: var(--her); }
+.line textarea { flex: 1; min-height: 46px; line-height: 1.5; }
+.line .ops { display: flex; flex-direction: column; gap: 4px; }
+.line .ops button {
+  background: var(--panel2); border: 1px solid var(--border); color: var(--muted);
+  border-radius: 6px; font-size: 11px; padding: 2px 8px; cursor: pointer;
+}
+.line .ops button:hover { color: var(--text); }
+
+/* ===== Player ===== */
+#playerOuter { display: flex; justify-content: center; }
+#playerWrap {
+  position: relative; border-radius: 14px 14px 0 0; overflow: hidden; border: 1px solid var(--border);
+  width: 100%; max-width: 100%; aspect-ratio: 16/9;
+}
+#playerWrap.portrait { max-width: 340px; }
+#playerWrap.square { max-width: 520px; }
+#playerBg { position: absolute; inset: 0; background-size: cover; background-position: center; }
+#playerShade { position: absolute; inset: 0; background: rgba(0,0,0,0); }
+#playerUi { position: absolute; inset: 0; }
+#chat {
+  position: absolute; inset: 0 0 56px 0; z-index: 1; pointer-events: none; overflow-y: auto;
+  padding: 20px; display: flex; flex-direction: column; gap: 12px;
+}
+#chat::-webkit-scrollbar { width: 6px; }
+.bubble {
+  max-width: 75%; padding: 10px 15px; border-radius: 16px; font-size: 14px; line-height: 1.7;
+  backdrop-filter: blur(6px); background: rgba(20,22,32,.55); white-space: pre-wrap;
+}
+.bubble.him { align-self: flex-start; border-left: 3px solid var(--him); }
+.bubble.her { align-self: flex-end; border-right: 3px solid var(--her); text-align: left; }
+.bubble .who { display: block; font-size: 11px; opacity: .75; margin-bottom: 3px; }
+.bubble .done { color: #fff; }
+.bubble .todo { color: rgba(255,255,255,.38); }
+
+#stage { position: absolute; left: 0; right: 0; z-index: 5; padding: 36px 20px 26px; text-align: center; cursor: grab; user-select: none; }
+#stage:active { cursor: grabbing; }
+#stage.top { top: 0; background: linear-gradient(to bottom, rgba(0,0,0,.55), transparent); }
+#stage.bottom { bottom: 0; background: linear-gradient(to top, rgba(0,0,0,.62), transparent); }
+#stage.center { top: 50%; transform: translateY(-50%); background: none; }
+#stage.free { background: none; }
+/* 动感音波动画 */
+#wave { display: flex; align-items: flex-end; justify-content: center; gap: 4px; height: 26px; margin-bottom: 10px; }
+#wave.stop span { height: 4px !important; }
+#wave span {
+  width: 5px; border-radius: 3px; height: 6px;
+  animation: waveB 0.9s ease-in-out infinite;
+}
+#wave.himActive span { background: var(--him); }
+#wave.herActive span { background: var(--her); }
+@keyframes waveB {
+  0%, 100% { height: 5px; }
+  50% { height: 24px; }
+}
+/* 字幕框缩放手柄 */
+.rs-handle {
+  position: absolute; top: 0; bottom: 0; width: 12px; cursor: ew-resize; z-index: 6;
+}
+.rs-handle.left { left: -6px; }
+.rs-handle.right { right: -6px; }
+.rs-handle:hover { background: linear-gradient(90deg, transparent, rgba(255,255,255,.25), transparent); }
+#avatar { font-size: 13px; margin-bottom: 10px; color: #ddd; }
+#avatar .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
+#avatar.himActive .dot { background: var(--him); }
+#avatar.herActive .dot { background: var(--her); }
+#karaoke {
+  display: inline-block; font-weight: 700; line-height: 1.65;
+  text-shadow: 0 2px 10px rgba(0,0,0,.75);
+}
+#karaoke .done { color: #fff; }
+#karaoke .todo { opacity: .42; }
+#karaoke.himActive { color: var(--him); }
+#karaoke.herActive { color: var(--her); }
+
+#playerControls { position: relative; z-index: 10; display: flex; gap: 8px; padding: 12px; justify-content: center; flex-wrap: wrap; background: var(--panel2); border: 1px solid var(--border); border-top: 0; border-radius: 0 0 14px 14px; }
+/* 画幅外控制条，永不影响画面 */
+#playerWrap.recording #playerControls { opacity: 1; }
+#playerWrap.clean #playerControls { opacity: 1; }
+#playerControls button {
+  background: rgba(255,255,255,.12); color: #fff; border: 1px solid rgba(255,255,255,.2);
+  padding: 8px 18px; border-radius: 999px; font-size: 13px; cursor: pointer;
+}
+#playerControls button:disabled { opacity: .35; cursor: not-allowed; }
+label.ctl { font-size: 12px; color: #ccc; display: flex; align-items: center; gap: 6px; }
+
+/* settings grid */
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+.card { background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+.card .ttl { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+.swatches { display: flex; gap: 8px; flex-wrap: wrap; }
+.swatch { width: 52px; height: 34px; border-radius: 7px; border: 2px solid transparent; cursor: pointer; }
+.swatch.on { border-color: #fff; }
+.presetCard { flex: 0 0 120px; height: 70px; border-radius: 8px; border: 2px solid transparent; cursor: pointer; background-size: cover; background-position: center; }
+.presetCard.on { border-color: var(--accent); }
+
+#genStatus { font-size: 13px; margin-top: 8px; min-height: 18px; }
+#genStatus.err { color: #ff7b7b; }
+#genStatus.ok { color: #7be08a; }
+.toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: #2a3048; border: 1px solid var(--border); padding: 10px 20px;
+  border-radius: 10px; font-size: 13px; display: none; z-index: 99;
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>🎙️ Dialog Blog Studio</h1>
+  <div class="sub">上传资料 → AI 生成男女对话博客 → 卡拉OK字幕播放（全部数据存本地浏览器）</div>
+
+  <div class="tabs">
+    <button id="tab1" class="on">① 上传资料</button>
+    <button id="tab2">② 编辑对话</button>
+    <button id="tab3">③ 播放 & 样式</button>
+  </div>
+
+  <!-- ================= Tab 1 ================= -->
+  <div class="panel" id="p1">
+    <h2>📄 上传资料</h2>
+    <div id="dropZone">点击选择 或 拖拽文件到此处<br><span class="hint">支持 .txt / .md / .docx</span></div>
+    <input type="file" id="fileInput" accept=".txt,.md,.markdown,.docx" hidden>
+    <div id="docInfo"></div>
+
+    <h3>🚀 轻松生成（推荐：跳官网，免 API Key）</h3>
+    <div class="row">
+      <button class="btn" id="copyPromptBtn">📋 复制生成提示词</button>
+      <select id="langSel" style="width:150px" title="对话语言">
+        <option value="zh" selected>中文（普通话）</option>
+        <option value="zh_yue">粤语</option>
+        <option value="mix">中英混合</option>
+        <option value="en">English 英语</option>
+        <option value="ja">日本語 日语</option>
+        <option value="es">Español 西班牙语</option>
+        <option value="ko">한국어 韩语</option>
+        <option value="fr">Français 法语</option>
+        <option value="de">Deutsch 德语</option>
+        <option value="ru">Русский 俄语</option>
+      </select>
+      <select id="durSel" style="width:110px" title="目标时长">
+        <option value="20" selected>约 20 分钟</option>
+        <option value="30">约 30 分钟</option>
+        <option value="45">约 45 分钟</option>
+        <option value="60">约 60 分钟</option>
+        <option value="custom">自定义…</option>
+      </select>
+      <input type="number" id="durCustom" min="20" max="120" placeholder="分钟" style="width:80px;display:none" title="输入 20~120 分钟">
+      <select id="segSel" style="width:150px" title="长对话建议分段生成，质量更高">
+        <option value="0" selected>一次性生成</option>
+        <option value="auto">✂️ 分段续写（推荐长文）</option>
+      </select>
+      <button class="ghost" id="tplToggle">✏️ 自定义模板</button>
+    </div>
+    <div id="tplBox" style="display:none;margin:10px 0">
+      <textarea id="tplText" rows="8" style="width:100%"></textarea>
+      <div class="hint">用 <b>{LANG}</b> 代表语言要求、<b>{DOC}</b> 代表资料内容。改完自动保存。</div>
+      <div class="row" style="margin-top:6px">
+        <button class="ghost" id="tplReset">↺ 恢复默认模板</button>
+      </div>
+    </div>
+    <div class="row" id="siteBar"></div>
+    <div class="row">
+      <input type="text" id="siteName" placeholder="网站名，如 Grok" style="width:120px">
+      <input type="text" id="siteUrl" placeholder="网址，如 https://grok.com" style="flex:1;min-width:160px">
+      <button class="ghost" id="siteAdd">＋ 添加网站</button>
+      <span class="hint" style="flex:1">点网站卡片上的 ✕ 可删除，自动保存</span>
+    </div>
+    <div class="hint" style="margin-bottom:8px">用法：点「复制提示词」→ 打开任一官网聊天粘贴发送 → 把回复里的 JSON 数组复制回来，粘贴到下面 → 点导入</div>
+    <textarea id="pasteJson" rows="3" placeholder='粘贴 AI 回复的 JSON，如：[{"role":"him","text":"Hello"},{"role":"her","text":"…"}]（AI 一般会自动帮你转好格式，直接全选复制过来即可）'></textarea>
+    <div class="row" style="margin-top:8px">
+      <button class="btn" id="importJsonBtn" style="background:#2ea76b">⬇️ 导入对话</button>
+      <span class="hint">也可以不粘贴，直接去 ② 手写</span>
+    </div>
+
+    <h3>🤖 全自动生成（可选：需 API Key，进阶用户）</h3>
+    <div class="row">
+      <select id="vendor" style="flex:1;min-width:180px">
+        <option value="zhipu">智谱 GLM (bigmodel.cn)</option>
+        <option value="deepseek">DeepSeek (deepseek.com)</option>
+        <option value="kimi">月之暗面 Kimi (moonshot.cn)</option>
+        <option value="custom">自定义 OpenAI 兼容接口</option>
+      </select>
+      <input type="password" id="apiKey" placeholder="API Key（仅存本机浏览器）" style="flex:1;min-width:180px">
+      <input type="text" id="model" placeholder="模型名（可留空用默认）" style="flex:1;min-width:140px">
+    </div>
+    <div class="row" id="customEndpointRow" style="display:none">
+      <input type="text" id="baseUrl" placeholder="Base URL，如 https://api.example.com/v1/chat/completions" style="flex:1">
+    </div>
+    <div class="row">
+      <button class="btn" id="genBtn">✨ AI 生成男女对话</button>
+      <span class="hint">无 Key？直接去 ② 手写对话即可</span>
+    </div>
+    <div id="genStatus"></div>
+    <!-- 分段续写状态条 -->
+    <div id="segPanel" style="display:none;margin-top:12px;border-top:1px dashed var(--border);padding-top:12px">
+      <div class="row">
+        <h2 style="margin:0;flex:1">✂️ 分段续写 <span class="hint" id="segInfo"></span></h2>
+        <button class="ghost" id="segReset">取消分段</button>
+      </div>
+      <div class="hint">每点一次「复制生成提示词」会自动带出当前段的续写指令；粘贴导入时<b>追加</b>到已有对话后面（不覆盖）。全部段完成后自动结束。</div>
+    </div>
+  </div>
+
+  <!-- ================= Tab 2 ================= -->
+  <div class="panel" id="p2" style="display:none">
+    <div class="row">
+      <h2 style="margin:0;flex:1">✏️ 对话编辑器（<span id="lineCount">0</span> 条）</h2>
+      <button class="ghost" id="addLine">＋ 新增一条</button>
+      <button class="ghost" id="clearLines">清空</button>
+      <button class="ghost" id="srtBtn">📄 导出SRT字幕</button>
+      <button class="btn" onclick="goTab(3)">去播放 →</button>
+    </div>
+    <div id="editor" style="margin-top:12px"></div>
+  </div>
+
+  <!-- ================= Tab 3 ================= -->
+  <div class="panel" id="p3" style="display:none">
+    <h2>🎬 播放器</h2>
+    <div class="row" style="margin-bottom:10px">
+      <span class="hint">画幅：</span>
+      <select id="aspectSel" style="width:120px">
+        <option value="16:9" selected>16:9 横屏</option>
+        <option value="9:16">9:16 竖屏</option>
+        <option value="1:1">1:1 方形</option>
+        <option value="4:5">4:5 竖版</option>
+      </select>
+      <span class="hint" id="dragHint">💡 字幕区可<b>拖动</b>位置、拖<b>左右边缘</b>调宽度</span>
+    </div>
+    <!-- 字幕数值微调（与拖拽联动，双向同步） -->
+    <div class="row" style="justify-content:center;margin-bottom:10px">
+      <label class="ctl" style="color:var(--muted)">位置X <input id="posX" type="range" min="5" max="95" style="width:90px"></label>
+      <label class="ctl" style="color:var(--muted)">位置Y <input id="posY" type="range" min="5" max="95" style="width:90px"></label>
+      <label class="ctl" style="color:var(--muted)">宽度 <input id="posW" type="range" min="20" max="98" style="width:120px"></label>
+      <button class="ghost" id="subtitleReset">↺ 居中复位</button>
+    </div>
+    <div id="playerOuter">
+    <div id="playerWrap">
+      <div id="playerBg"></div><div id="playerShade"></div>
+      <div id="playerUi">
+        <div id="stage" class="bottom">
+          <div id="wave"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+          <div id="karaoke"></div>
+        </div>
+        <div id="chat"></div>
+      </div>
+    </div>
+    </div>
+    <!-- 控制条：位于播放器画幅之外，永不入镜 -->
+    <div id="playerControls">
+      <button id="play" class="btn" style="background:var(--accent)">▶ 播放</button>
+      <button id="pause" disabled>⏸ 暂停</button>
+      <button id="stop" disabled>⏹ 停止</button>
+      <label class="ctl">语速 <input id="rate" type="range" min="0.6" max="1.6" step="0.1" value="1" style="width:80px"></label>
+      <button class="btn" id="export4kBtn" style="background:#2ea76b">🎥 导出视频</button>
+      <select id="qualitySel" style="width:130px" title="导出清晰度">
+        <option value="720">720P（轻量，最小）</option>
+        <option value="1080" selected>1080P（通用）</option>
+        <option value="1440">1440P（2K）</option>
+        <option value="4K">4K（超清）</option>
+      </select>
+      <span class="hint" id="sizeEst">≈ --</span>
+    </div>
+    <div id="exportProgress" style="display:none;max-width:640px;margin:10px auto 0">
+      <div style="background:var(--bg);border-radius:6px;height:18px;overflow:hidden;border:1px solid var(--border)">
+        <div id="exportBar" style="height:100%;width:0%;background:linear-gradient(90deg,#2ea76b,#7be08a);transition:width .3s"></div>
+      </div>
+      <div id="exportPct" class="hint" style="margin-top:4px;text-align:center"></div>
+    </div>
+
+    <h3>🎨 样式设置（实时预览，自动保存）</h3>
+    <div class="grid">
+      <div class="card">
+        <div class="ttl">背景</div>
+        <div class="row"><button class="ghost" id="bgUpload">上传图片</button><input type="file" id="bgFile" accept="image/*" hidden></div>
+        <div class="swatches" id="bgSwatches"></div>
+        <div class="ttl" style="margin-top:12px">🎨 用 AI 生成背景/封面</div>
+        <div class="row">
+          <button class="ghost" id="bgPromptBtn" style="flex:1">📋 复制背景生成提示词</button>
+          <button class="ghost" id="bgTplToggle">✏️ 自定义</button>
+        </div>
+        <div id="bgTplBox" style="display:none;margin:8px 0">
+          <textarea id="bgTplText" rows="7" style="width:100%"></textarea>
+          <div class="hint">占位符：<b>{TOPIC}</b>=对话主题、<b>{RATIO}</b>=画幅比例、<b>{SIZE}</b>=像素尺寸。自动保存。</div>
+          <div class="row" style="margin-top:6px">
+            <button class="ghost" id="bgTplReset">↺ 恢复默认模板</button>
+          </div>
+        </div>
+        <div class="hint" style="margin-bottom:4px">推荐尺寸：<b id="bgSizeHint">1920×1080</b>（随画幅自动变化）</div>
+        <div id="imgSiteBar" class="row" style="margin-bottom:4px"></div>
+        <div class="row">
+          <input type="text" id="imgSiteName" placeholder="网站名，如 即梦" style="width:100px">
+          <input type="text" id="imgSiteUrl" placeholder="网址 https://..." style="flex:1;min-width:120px">
+          <button class="ghost" id="imgSiteAdd">＋</button>
+        </div>
+        <div class="hint">流程：复制提示词 → 去 AI 绘画网站生成并下载 → 点「上传图片」导入。网站可增删，自动保存。</div>
+      </div>
+      <div class="card">
+        <div class="ttl">遮罩暗化 <span id="shadeVal">30%</span></div>
+        <input type="range" id="shade" min="0" max="80" value="30" style="width:100%">
+        <div class="ttl" style="margin-top:10px">字幕位置</div>
+        <select id="stagePos" style="width:100%">
+          <option value="bottom">底部（默认）</option>
+          <option value="top">顶部</option>
+          <option value="center">居中</option>
+          <option value="free">自定义（拖动字幕区）</option>
+        </select>
+      </div>
+      <div class="card">
+        <div class="ttl">字体</div>
+        <select id="fontFamily" style="width:100%">
+          <option value="'Microsoft YaHei', sans-serif">微软雅黑（中文）</option>
+          <option value="SimSun, serif">宋体（中文）</option>
+          <option value="KaiTi, serif">楷体（中文）</option>
+          <option value="SimHei, sans-serif">黑体（中文）</option>
+          <option value="DengXian, sans-serif">等线（中文）</option>
+          <optgroup label="—— 英文字体 ——">
+          <option value="Arial, sans-serif">Arial</option>
+          <option value="'Helvetica Neue', Helvetica, sans-serif">Helvetica Neue</option>
+          <option value="'Segoe UI', sans-serif">Segoe UI</option>
+          <option value="Verdana, sans-serif">Verdana</option>
+          <option value="Tahoma, sans-serif">Tahoma</option>
+          <option value="'Trebuchet MS', sans-serif">Trebuchet MS</option>
+          <option value="Georgia, serif">Georgia</option>
+          <option value="'Times New Roman', serif">Times New Roman</option>
+          <option value="Garamond, serif">Garamond</option>
+          <option value="'Palatino Linotype', serif">Palatino</option>
+          <option value="'Courier New', monospace">Courier New</option>
+          <option value="Consolas, monospace">Consolas</option>
+          <option value="Impact, sans-serif">Impact</option>
+          <option value="'Comic Sans MS', cursive">Comic Sans MS</option>
+          <option value="'Brush Script MT', cursive">Brush Script MT</option>
+          <option value="'Franklin Gothic Medium', sans-serif">Franklin Gothic</option>
+          <option value="'Century Gothic', sans-serif">Century Gothic</option>
+          <option value="Candara, sans-serif">Candara</option>
+          <option value="Corbel, sans-serif">Corbel</option>
+          <option value="Rockwell, serif">Rockwell</option>
+          <option value="'Bodoni MT', serif">Bodoni MT</option>
+          <option value="'Segoe Script', cursive">Segoe Script</option>
+          <option value="'Segoe Print', cursive">Segoe Print</option>
+          </optgroup>
+        </select>
+        <div class="ttl" style="margin-top:10px">字号 <span id="fsizeVal">30px</span></div>
+        <input type="range" id="fontSize" min="18" max="56" value="30" style="width:100%">
+        <div class="ttl" style="margin-top:10px">字重</div>
+        <select id="fontWeight" style="width:100%">
+          <option value="400">常规</option><option value="700" selected>加粗</option><option value="900">超粗</option>
+        </select>
+      </div>
+      <div class="card">
+        <div class="ttl">角色设置（角色A / 角色B，性别与名字自定义）</div>
+        <div class="row">
+          <span class="hint" style="width:60px">角色A</span>
+          <input type="text" id="himName" placeholder="名字，如 小雨" style="width:100px" title="角色A显示名">
+          <select id="himGender" style="width:76px" title="角色A性别（影响声音）">
+            <option value="male" selected>男声</option>
+            <option value="female">女声</option>
+          </select>
+          <input type="color" id="himColor" value="#4c8dff" title="角色A颜色">
+        </div>
+        <div class="row">
+          <span class="hint" style="width:60px">角色B</span>
+          <input type="text" id="herName" placeholder="名字，如 阿凯" style="width:100px" title="角色B显示名">
+          <select id="herGender" style="width:76px" title="角色B性别（影响声音）">
+            <option value="male">男声</option>
+            <option value="female" selected>女声</option>
+          </select>
+          <input type="color" id="herColor" value="#ff5c8a" title="角色B颜色">
+        </div>
+        <div class="hint">两个角色都可以是男声/女声/同名同色——比如两人都是女声，或单人自问自答。编辑器里 ♂/♀ 按钮会在「角色A/角色B」之间切换。</div>
+        <div class="row" style="margin-top:8px">
+          <label class="hint" style="flex:1"><input type="checkbox" id="showBubbles" checked> 显示对话气泡</label>
+        </div>
+        <button class="ghost" id="resetStyle" style="margin-top:6px">↺ 重置默认样式</button>
+      </div>
+    </div>
+
+    <h3>🔊 语音音色（TTS）</h3>
+    <div class="grid">
+      <div class="card">
+        <div class="ttl">TTS 引擎</div>
+        <select id="ttsEngine" style="width:100%">
+          <option value="local">浏览器本机（免费，音色一般）</option>
+          <option value="edge">✨ Edge 微软真人声（永久免费，推荐）</option>
+          <option value="siliconflow">硅基流动 CosyVoice（注册送额度，真人感）</option>
+          <option value="api">OpenAI 兼容 TTS API（通用自定义）</option>
+        </select>
+        <div class="hint" id="edgeHint" style="display:none;margin-top:8px">使用微软 Edge 的在线语音（晓晓/云希等真人感音色）。播放时会自动列出系统可用音色；若 Windows 没装对应语音包，去 设置→时间和语言→语音 添加。完全免费无限量。</div>
+        <div id="voicePicker" style="display:none;margin-top:8px">
+          <div class="hint" style="margin-bottom:6px">📢 下面这两个下拉是<b>本机/Edge 引擎</b>的音色选择（系统语音包），仅这两个引擎有效：</div>
+          <div class="row"><span class="hint" style="flex:1">♂ 男声音色</span>
+            <select id="himVoiceSel" style="flex:1.6"></select>
+            <button class="ghost" id="himPreview">试听</button>
+          </div>
+          <div class="row"><span class="hint" style="flex:1">♀ 女声音色</span>
+            <select id="herVoiceSel" style="flex:1.6"></select>
+            <button class="ghost" id="herPreview">试听</button>
+          </div>
+          <div class="hint">默认「自动」按语言+性别智能挑选；也可手动指定任意系统音色。列表随系统语音包变化，Mac 上会显示苹果自带的音色。</div>
+        </div>
+        <div id="ttsApiRow" style="display:none;margin-top:10px;border-top:1px dashed var(--border);padding-top:10px">
+          <div class="hint" id="ttsPresetHint" style="margin-bottom:8px"></div>
+          <input type="text" id="ttsUrl" placeholder="TTS Base URL，如 https://api.xx.com/v1/audio/speech" style="width:100%;margin-bottom:8px">
+          <input type="password" id="ttsKey" placeholder="TTS API Key（仅存本机）" style="width:100%;margin-bottom:8px">
+          <input type="text" id="ttsModel" placeholder="模型名，如 tts-1 / fish-speech-1.5" style="width:100%;margin-bottom:8px">
+          <div class="hint" style="margin-bottom:6px">📢 API 模式的音色是在<b>这里填音色名</b>（由服务商定义，如 nova/onyx），上面那两个下拉对 API 无效：</div>
+          <div class="row"><span class="hint" style="flex:1">♂ API 男声音色名</span><input type="text" id="ttsHimVoice" value="male-qn-qingse" style="width:220px"></div>
+          <div class="row"><span class="hint" style="flex:1">♀ API 女声音色名</span><input type="text" id="ttsHerVoice" value="female-shaonv" style="width:220px"></div>
+          <div class="hint">请求格式：POST {model, input, voice, response_format:"mp3"}，兼容 OpenAI TTS 格式的服务</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="ttl">🎬 导出视频</div>
+        <div class="hint" style="margin-bottom:8px">点击后自动从头播放并录制播放器画面（含语音），结束后自动下载 MP4/WebM。录制期间请勿切换页面。</div>
+        <button class="btn" id="exportBtn" style="width:100%">🎥 录制并导出视频</button>
+        <div id="exportStatus" class="hint" style="margin-top:8px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============ State & persistence ============ */
+const LS = {
+  get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
+  set(k, v) { localStorage.setItem(k, JSON.stringify(v)); }
+};
+const DEFAULT_SETTINGS = {
+  bg: 'grad1', bgImg: null, shade: 30, stagePos: 'bottom', aspect: '16:9',
+  stageX: 50, stageY: 70, stageW: 80,   // free 模式下的位置与宽度（百分比）
+  fontFamily: "'Microsoft YaHei', sans-serif", fontSize: 30, fontWeight: '700',
+  himColor: '#4c8dff', herColor: '#ff5c8a', showBubbles: true,
+  himName: '小雨', herName: '阿凯', himGender: 'male', herGender: 'female'
+};
+let settings = { ...DEFAULT_SETTINGS, ...LS.get('ds.settings', {}) };
+let dialog = LS.get('ds.dialog', []);   // [{role:'him'|'her', text}]
+let docText = LS.get('ds.doc', '');
+
+const $ = id => document.getElementById(id);
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', 2200); }
+
+/* ============ Tabs ============ */
+function goTab(n) {
+  [1, 2, 3].forEach(i => {
+    $('tab' + i).classList.toggle('on', i === n);
+    $('p' + i).style.display = i === n ? '' : 'none';
+  });
+  if (n === 2) renderEditor();
+  if (n === 3) applySettings();
+}
+[1, 2, 3].forEach(i => $('tab' + i).onclick = () => goTab(i));
+
+/* ============ Tab1: upload ============ */
+const dz = $('dropZone');
+dz.onclick = () => $('fileInput').click();
+dz.ondragover = e => { e.preventDefault(); dz.classList.add('over'); };
+dz.ondragleave = () => dz.classList.remove('over');
+dz.ondrop = e => { e.preventDefault(); dz.classList.remove('over'); if (e.dataTransfer.files[0]) readFile(e.dataTransfer.files[0]); };
+$('fileInput').onchange = e => { if (e.target.files[0]) readFile(e.target.files[0]); };
+
+function readFile(file) {
+  const name = file.name.toLowerCase();
+  const done = txt => {
+    docText = txt; LS.set('ds.doc', txt);
+    $('docInfo').innerHTML = `✅ <b>${file.name}</b>（${txt.length} 字）已就绪，可点击下方"AI 生成"`;
+  };
+  if (name.endsWith('.docx')) {
+    file.arrayBuffer().then(buf => mammoth.extractRawText({ arrayBuffer: buf })).then(r => done(r.value))
+      .catch(() => setErr('docx 解析失败（需联网加载 mammoth.js）'));
+  } else {
+    file.text().then(done);
+  }
+}
+
+/* ============ Tab1: AI generate ============ */
+const ENDPOINTS = {
+  zhipu:    { url: 'https://open.bigmodel.cn/api/paas/v4/chat/completions', model: 'glm-4-flash' },
+  deepseek: { url: 'https://api.deepseek.com/chat/completions',            model: 'deepseek-chat' },
+  kimi:     { url: 'https://api.moonshot.cn/v1/chat/completions',          model: 'moonshot-v1-8k' },
+};
+$('vendor').onchange = () => {
+  $('customEndpointRow').style.display = $('vendor').value === 'custom' ? '' : 'none';
+};
+const apiCfg = LS.get('ds.api', {});
+$('apiKey').value = apiCfg.key || ''; $('model').value = apiCfg.model || ''; $('baseUrl').value = apiCfg.baseUrl || '';
+['apiKey', 'model', 'baseUrl'].forEach(id => $(id).onchange = () => LS.set('ds.api', {
+  key: $('apiKey').value, model: $('model').value, baseUrl: $('baseUrl').value
+}));
+
+function setErr(msg) { const s = $('genStatus'); s.textContent = msg; s.className = 'err'; }
+function setOk(msg)  { const s = $('genStatus'); s.textContent = msg; s.className = 'ok'; }
+
+const LANG_REQ = {
+  zh: '全部台词使用中文口语（普通话）',
+  zh_yue: '全部台词使用粤语口语（粤语白话写法，如「你今日点呀」，可附中文习惯用字）',
+  en: 'All lines must be natural spoken English (keep the JSON keys "him"/"her")',
+  ja: '全てのセリフは自然な話し言葉の日本語で書いてください（JSONのキーは "him"/"her" のまま）',
+  es: 'Todos los diálogos deben ser en español hablado y natural (mantén las claves JSON "him"/"her")',
+  ko: '모든 대사는 자연스러운 구어체 한국어로 작성하세요 (JSON 키는 "him"/"her" 유지)',
+  fr: 'Toutes les répliques doivent être en français parlé naturel (garde les clés JSON "him"/"her")',
+  de: 'Alle Texte sollen natürlich gesprochenes Deutsch sein (JSON-Schlüssel "him"/"her" beibehalten)',
+  ru: 'Все реплики должны быть на естественном разговорном русском (ключи JSON "him"/"her")',
+  mix: '台词使用中英混合的自然口语（中文为主，夹杂常用英文表达，像日常聊天）'
+};
+const LANG_NAME = {
+  zh: { label: '中文（普通话）', speech: 'zh-CN' },
+  zh_yue: { label: '粤语', speech: 'zh-HK' },
+  en: { label: 'English 英语', speech: 'en-US' },
+  ja: { label: '日本語 日语', speech: 'ja-JP' },
+  es: { label: 'Español 西班牙语', speech: 'es-ES' },
+  ko: { label: '한국어 韩语', speech: 'ko-KR' },
+  fr: { label: 'Français 法语', speech: 'fr-FR' },
+  de: { label: 'Deutsch 德语', speech: 'de-DE' },
+  ru: { label: 'Русский 俄语', speech: 'ru-RU' },
+  mix: { label: '中英混合', speech: 'zh-CN' }
+};
+const DEFAULT_PROMPT = `你是播客脚本作者。把用户提供的资料改写成一段男女双人对口播博客脚本：
+- 男角色(him)与女角色(her)交替发言
+- {DUR}
+- 第一条是开场问候，最后一条是结束语（引导点赞关注）
+- 口语化、轻松自然、有来有回，覆盖资料的核心内容，不要生硬念稿
+- {LANG}
+- 只输出 JSON 数组，格式：[{"role":"him","text":"..."},{"role":"her","text":"..."}] 不要其他文字
+
+资料如下：
+{DOC}`;
+
+const DEFAULT_SITES = [
+  { name: 'DeepSeek', url: 'https://chat.deepseek.com' },
+  { name: '豆包',     url: 'https://www.doubao.com/chat/' },
+  { name: '智谱清言', url: 'https://chatglm.cn' },
+  { name: 'Kimi',     url: 'https://kimi.moonshot.cn' },
+];
+let sites = LS.get('ds.sites', DEFAULT_SITES);
+let promptTpl = LS.get('ds.tpl', DEFAULT_PROMPT);
+
+/* --- prompt template editor --- */
+$('durSel').onchange = () => {
+  $('durCustom').style.display = $('durSel').value === 'custom' ? '' : 'none';
+};
+$('tplToggle').onclick = () => {
+  const show = $('tplBox').style.display === 'none';
+  $('tplBox').style.display = show ? '' : 'none';
+  if (show) $('tplText').value = promptTpl;
+};
+$('tplText').oninput = () => { promptTpl = $('tplText').value; LS.set('ds.tpl', promptTpl); };
+$('tplReset').onclick = () => { promptTpl = DEFAULT_PROMPT; LS.set('ds.tpl', promptTpl); $('tplText').value = promptTpl; toast('已恢复默认模板'); };
+
+/* --- site shortcuts manager --- */
+function renderSites() {
+  const bar = $('siteBar'); bar.innerHTML = '';
+  sites.forEach((s, i) => {
+    const a = document.createElement('div');
+    a.style.cssText = 'position:relative;display:inline-block';
+    a.innerHTML = `<a href="${s.url}" target="_blank" rel="noopener"><button class="ghost">${s.name} ↗</button></a>
+      <span title="删除" data-del style="position:absolute;top:-7px;right:-7px;background:#ff5c5c;color:#fff;border-radius:50%;width:18px;height:18px;font-size:11px;line-height:18px;text-align:center;cursor:pointer;display:none">✕</span>`;
+    if (sites.length > 1) {   // 至少保留一个
+      const del = a.querySelector('[data-del]');
+      a.onmouseenter = () => del.style.display = 'block';
+      a.onmouseleave = () => del.style.display = 'none';
+      del.onclick = (e) => { e.preventDefault(); sites.splice(i, 1); LS.set('ds.sites', sites); renderSites(); };
+    }
+    bar.appendChild(a);
+  });
+}
+$('siteAdd').onclick = () => {
+  const name = $('siteName').value.trim(), url = $('siteUrl').value.trim();
+  if (!name || !url) return toast('请填写网站名和网址');
+  if (!/^https?:\/\//.test(url)) return toast('网址需以 http:// 或 https:// 开头');
+  sites.push({ name, url }); LS.set('ds.sites', sites);
+  $('siteName').value = ''; $('siteUrl').value = '';
+  renderSites(); toast(`已添加 ${name}`);
+};
+renderSites();
+
+/* --- AI 绘画网站快捷入口（背景生成） --- */
+const DEFAULT_IMG_SITES = [
+  { name: '即梦(豆包)',  url: 'https://jimeng.jianying.com/' },
+  { name: '通义万相',    url: 'https://tongyi.aliyun.com/wanxiang' },
+  { name: '可灵AI',      url: 'https://klingai.kuaishou.com/' },
+  { name: 'Designer',    url: 'https://designer.microsoft.com/' },
+];
+let imgSites = LS.get('ds.imgSites', DEFAULT_IMG_SITES);
+function renderImgSites() {
+  const bar = $('imgSiteBar'); bar.innerHTML = '';
+  imgSites.forEach((s, i) => {
+    const a = document.createElement('div');
+    a.style.cssText = 'position:relative;display:inline-block';
+    a.innerHTML = `<a href="${s.url}" target="_blank" rel="noopener"><button class="ghost">${s.name} ↗</button></a>
+      <span data-del title="删除" style="position:absolute;top:-7px;right:-7px;background:#ff5c5c;color:#fff;border-radius:50%;width:18px;height:18px;font-size:11px;line-height:18px;text-align:center;cursor:pointer;display:none">✕</span>`;
+    if (imgSites.length > 1) {
+      const del = a.querySelector('[data-del]');
+      a.onmouseenter = () => del.style.display = 'block';
+      a.onmouseleave = () => del.style.display = 'none';
+      del.onclick = e => { e.preventDefault(); imgSites.splice(i, 1); LS.set('ds.imgSites', imgSites); renderImgSites(); };
+    }
+    bar.appendChild(a);
+  });
+}
+$('imgSiteAdd').onclick = () => {
+  const name = $('imgSiteName').value.trim(), url = $('imgSiteUrl').value.trim();
+  if (!name || !url) return toast('请填写网站名和网址');
+  if (!/^https?:\/\//.test(url)) return toast('网址需以 http:// 或 https:// 开头');
+  imgSites.push({ name, url }); LS.set('ds.imgSites', imgSites);
+  $('imgSiteName').value = ''; $('imgSiteUrl').value = '';
+  renderImgSites(); toast(`已添加 ${name}`);
+};
+renderImgSites();
+
+// 当前画幅对应的推荐像素尺寸
+const ASPECT_PX = { '16:9': '1920×1080', '9:16': '1080×1920', '1:1': '1080×1080', '4:5': '1080×1350' };
+function syncBgSizeHint() { $('bgSizeHint').textContent = ASPECT_PX[settings.aspect] || '1920×1080'; }
+syncBgSizeHint();
+$('aspectSel').addEventListener('change', syncBgSizeHint);
+
+// 背景生成提示词：可自定义模板，持久保存
+const DEFAULT_BG_PROMPT = `为一段双人播客对话视频生成背景图。
+主题：{TOPIC}
+要求：
+- 比例 {RATIO}（尺寸约 {SIZE} 像素）
+- 画面简洁、留有大量负空间（中下部要放字幕文字，不要复杂纹理）
+- 柔和的渐变或抽象光效，低对比度，避免大面积纯白或纯黑
+- 与主题氛围匹配的色调，无文字、无水印、无人物面部特写`;
+let bgPromptTpl = LS.get('ds.bgTpl', DEFAULT_BG_PROMPT);
+$('bgTplToggle').onclick = () => {
+  const show = $('bgTplBox').style.display === 'none';
+  $('bgTplBox').style.display = show ? '' : 'none';
+  if (show) $('bgTplText').value = bgPromptTpl;
+};
+$('bgTplText').oninput = () => { bgPromptTpl = $('bgTplText').value; LS.set('ds.bgTpl', bgPromptTpl); };
+$('bgTplReset').onclick = () => { bgPromptTpl = DEFAULT_BG_PROMPT; LS.set('ds.bgTpl', bgPromptTpl); $('bgTplText').value = bgPromptTpl; toast('已恢复默认背景模板'); };
+
+// 背景生成提示词：取对话前几句概括主题
+$('bgPromptBtn').onclick = async () => {
+  const topic = dialog.slice(0, 6).map(x => x.text).join(' ').slice(0, 120) || '（对话主题）';
+  const [w, h] = (ASPECT_PX[settings.aspect] || '1920×1080').split('×');
+  const prompt = bgPromptTpl
+    .replaceAll('{TOPIC}', topic)
+    .replaceAll('{RATIO}', settings.aspect)
+    .replaceAll('{SIZE}', `${w}×${h}`);
+  try { await navigator.clipboard.writeText(prompt); toast('✅ 背景提示词已复制，去 AI 绘画网站生成'); }
+  catch {
+    const ta = document.createElement('textarea');
+    ta.value = prompt; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); ta.remove(); toast('✅ 背景提示词已复制');
+  }
+};
+
+/* --- 分段续写 --- */
+let seg = LS.get('ds.seg', null);   // {total, done, minutes, lang} 或 null
+function calcSegParts(min) { return Math.max(2, Math.min(6, Math.ceil(min / 8))); }  // 每 8 分钟一段
+function syncSegUI() {
+  $('segPanel').style.display = seg ? '' : 'none';
+  if (seg) $('segInfo').textContent = `第 ${seg.done + 1} / ${seg.total} 段（共约 ${seg.minutes} 分钟）`;
+}
+$('segSel').onchange = () => {
+  if ($('segSel').value === 'auto') {
+    const min = getMinutes(), lang = $('langSel').value;
+    seg = { total: calcSegParts(min), done: 0, minutes: min, lang };
+    LS.set('ds.seg', seg);
+    toast(`已开启分段续写：共 ${seg.total} 段，每段约 ${Math.round(min / seg.total)} 分钟`);
+  }
+  syncSegUI();
+};
+$('segReset').onclick = () => { seg = null; LS.set('ds.seg', null); $('segSel').value = '0'; syncSegUI(); toast('已取消分段模式'); };
+syncSegUI();
+
+const SEG_INTRO = [
+  '这是【第 1 部分】，请生成脚本的开头部分：开场问候 + 引入主题 + 第一批要点讨论。',
+  '这是【第 2 部分】，请接着上一部分自然续写，深入展开新的要点，不要重复之前内容，不要重新开场。',
+  '这是【第 3 部分】，请继续续写，讨论更深入或更具体的内容（案例/细节/数据）。',
+  '这是【第 4 部分】，请继续续写，可以加入一些观点交锋、追问和补充。',
+  '这是【第 5 部分】，请继续续写，开始收拢话题，总结前文要点。',
+  '这是【第 6 部分】，请生成结尾部分：总结全文 + 结束语 + 引导点赞关注。'
+];
+function segPrompt() {
+  const part = Math.min(seg.done, SEG_INTRO.length - 1);
+  const perMin = Math.round(seg.minutes / seg.total);
+  const prev = dialog.slice(-6).map(x => (x.role === 'him' ? '男：' : '女：') + x.text).join('\n');
+  let p = '';
+  if (seg.done === 0) {
+    p = promptTpl.replace('{LANG}', LANG_REQ[seg.lang]).replace('{DUR}', durHint(perMin, seg.lang)).replace('{DOC}', docPartNow());
+    p += `\n\n另外：整个脚本将分为 ${seg.total} 段连续生成，本段只是第 1 段，末尾不要说结束语。`;
+  } else {
+    p = `我们在共同创作一段男女双人对口播博客脚本（目标总时长约 ${seg.minutes} 分钟，分 ${seg.total} 段生成）。
+${SEG_INTRO[part]}
+${LANG_REQ[seg.lang]}
+本段目标时长约 ${perMin} 分钟（约 ${perMin * 240} 个中文字或 ${perMin * 160} 个英文词）。
+上一部分的最后几句是：
+${prev || '（开头）'}
+只输出本段 JSON 数组，格式同前：[{"role":"him","text":"..."},{"role":"her","text":"..."}]，第一条要衔接上文语气。`;
+  }
+  return p;
+}
+function docPartNow() { return docText ? docText.slice(0, 6000) : '（请把你的资料粘贴在这里）'; }
+
+/* --- 官网粘贴导入流程 --- */
+// 中文语速约 240 字/分钟（口播），英文约 160 词/分钟
+function getMinutes() {
+  if ($('durSel').value === 'custom') {
+    const v = parseInt($('durCustom').value);
+    return (isNaN(v) || v < 20) ? 20 : Math.min(v, 120);   // 下限 20，上限 120
+  }
+  return parseInt($('durSel').value);
+}
+function durHint(min, lang) {
+  const zhChars = Math.round(min * 240), enWords = Math.round(min * 160);
+  const lines = Math.max(8, Math.round(min * 12));   // 每条平均约 20 字 → 约 12 条/分钟
+  if (lang === 'en' || lang === 'es' || lang === 'fr' || lang === 'de')
+    return `目标时长约 ${min} 分钟：全部台词合计约 ${enWords} 个词，共 ${lines} 条左右`;
+  if (lang === 'ja') return `目標の長さは約 ${min} 分：全セリフ合わせて約 ${min * 300} 文字、${lines} 行程度`;
+  if (lang === 'ko') return `목표 길이 약 ${min}분: 전체 대사 합계 약 ${min * 250}자, ${lines}줄 정도`;
+  if (lang === 'ru') return `Целая длительность ~${min} мин: всего около ${min * 1000} символов, ~${lines} реплик`;
+  if (lang === 'zh_yue') return `目標時長約 ${min} 分鐘：全部台詞合計約 ${zhChars} 個字（粵語口語），共 ${lines} 條左右`;
+  if (lang === 'mix') return `目标时长约 ${min} 分钟：全部台词合计约 ${Math.round(zhChars * 0.7)} 个中文字加适量英文词，共 ${lines} 条左右`;
+  return `目标时长约 ${min} 分钟：全部台词合计约 ${zhChars} 个中文字，共 ${lines} 条左右`;
+}
+$('copyPromptBtn').onclick = async () => {
+  const full = seg ? segPrompt()
+    : promptTpl.replace('{LANG}', LANG_REQ[$('langSel').value]).replace('{DUR}', durHint(getMinutes(), $('langSel').value)).replace('{DOC}', docPartNow());
+  try { await navigator.clipboard.writeText(full); toast('✅ 提示词已复制，去官网粘贴发送'); }
+  catch {
+    // clipboard API 可能被 file:// 限制，降级用可编辑框
+    const ta = document.createElement('textarea');
+    ta.value = full; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); ta.remove(); toast('✅ 提示词已复制，去官网粘贴发送');
+  }
+};
+$('importJsonBtn').onclick = () => {
+  const raw = $('pasteJson').value.trim();
+  if (!raw) return toast('请先粘贴 AI 回复的内容');
+  try {
+    const m = raw.match(/\[[\s\S]*\]/);
+    const arr = JSON.parse(m ? m[0] : raw);
+    if (!Array.isArray(arr) || !arr.length) throw new Error('没找到对话数组');
+    const part = arr.filter(x => x.text).map(x => ({ role: x.role === 'her' ? 'her' : 'him', text: String(x.text) }));
+    if (seg) {
+      // 分段模式：追加而不是覆盖
+      dialog = dialog.concat(part);
+      seg.done++;
+      if (seg.done >= seg.total) { LS.set('ds.seg', null); const t = seg.total; seg = null; $('segSel').value = '0'; syncSegUI(); toast(`🎉 全部 ${t} 段已完成！`); }
+      else { LS.set('ds.seg', seg); syncSegUI(); toast(`✅ 第 ${seg.done} 段已追加（${part.length} 条），继续下一段`); }
+    } else {
+      dialog = part;
+      toast(`✅ 已导入 ${dialog.length} 条对话`);
+    }
+    LS.set('ds.dialog', dialog);
+    goTab(2);
+  } catch (e) {
+    toast('❌ 解析失败：' + e.message + '（请复制含 JSON 数组的完整回复）');
+  }
+};
+
+$('genBtn').onclick = async () => {
+  if (!docText) return setErr('请先上传资料文件');
+  const key = $('apiKey').value.trim();
+  if (!key) return setErr('请填写 API Key（Tab1 的 AI 生成设置里）');
+  if ($('vendor').value === 'custom' && !$('baseUrl').value.trim()) return setErr('自定义模式请填写 Base URL');
+  LS.set('ds.api', { key, model: $('model').value, baseUrl: $('baseUrl').value.trim() });
+  $('genBtn').disabled = true;
+  setOk('⏳ 正在生成，请稍候…');
+  try {
+    // 分段模式：API 循环逐段生成并合并
+    if (seg) {
+      const merged = [];
+      for (let p = 0; p < seg.total; p++) {
+        setOk(`⏳ 分段模式：正在生成第 ${p + 1}/${seg.total} 段…`);
+        const part = await apiCallOnce(segPromptPart(p));
+        merged.push(...part);
+        seg.done = p + 1; LS.set('ds.seg', seg); syncSegUI();
+      }
+      dialog = dialog.concat(merged);
+      LS.set('ds.seg', null); seg = null; syncSegUI();
+      setOk(`✅ 分段生成完成，共 ${dialog.length} 条对话`);
+      LS.set('ds.dialog', dialog);
+      goTab(2);
+      return;
+    }
+    const part = await apiCallOnce(promptTpl
+      .replace('{LANG}', LANG_REQ[$('langSel').value])
+      .replace('{DUR}', durHint(getMinutes(), $('langSel').value))
+      .replace('{DOC}', docText.slice(0, 12000)));
+    dialog = part;
+    LS.set('ds.dialog', dialog);
+    setOk(`✅ 生成 ${dialog.length} 条对话，已填入编辑器`);
+    goTab(2);
+  } catch (e) {
+    setErr('❌ 生成失败：' + e.message);
+  } finally {
+    $('genBtn').disabled = false;
+  }
+};
+
+function segPromptPart(p) {
+  seg.done = p;
+  return segPrompt();
+}
+
+async function apiCallOnce(userMsg) {
+  const v = $('vendor').value;
+  let url, model;
+  if (v === 'custom') {
+    url = $('baseUrl').value.trim(); model = $('model').value.trim() || 'gpt-4o-mini';
+    if (!url) throw new Error('自定义模式请填写 Base URL');
+  } else {
+    url = ENDPOINTS[v].url; model = $('model').value.trim() || ENDPOINTS[v].model;
+  }
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + $('apiKey').value.trim() },
+    body: JSON.stringify({
+      model, temperature: 0.8,
+      messages: [
+        { role: 'system', content: '只输出 JSON 数组，不要其他文字。' },
+        { role: 'user', content: userMsg }
+      ]
+    })
+  });
+  if (!res.ok) throw new Error('HTTP ' + res.status + ' ' + (await res.text()).slice(0, 200));
+  const data = await res.json();
+  let content = data.choices[0].message.content.replace(/```json|```/g, '').trim();
+  const m = content.match(/\[[\s\S]*\]/);
+  const arr = JSON.parse(m ? m[0] : content);
+  if (!Array.isArray(arr) || !arr.length) throw new Error('返回格式异常');
+  return arr.filter(x => x.text).map(x => ({ role: x.role === 'her' ? 'her' : 'him', text: String(x.text) }));
+}
+
+/* ============ Tab2: editor ============ */
+function renderEditor() {
+  const ed = $('editor'); ed.innerHTML = '';
+  $('lineCount').textContent = dialog.length;
+  dialog.forEach((item, i) => {
+    const div = document.createElement('div');
+    div.className = 'line ' + item.role;
+    div.innerHTML = `
+      <button class="role" title="点击切换角色A/角色B">${item.role === 'him' ? 'A' : 'B'}</button>
+      <textarea placeholder="台词…"></textarea>
+      <div class="ops">
+        <button data-op="up">▲</button><button data-op="dn">▼</button><button data-op="del">✕</button>
+      </div>`;
+    const ta = div.querySelector('textarea');
+    ta.value = item.text;
+    ta.oninput = () => { dialog[i].text = ta.value; LS.set('ds.dialog', dialog); };
+    div.querySelector('.role').onclick = () => {
+      dialog[i].role = dialog[i].role === 'him' ? 'her' : 'him';
+      LS.set('ds.dialog', dialog); renderEditor();
+    };
+    div.querySelector('[data-op=up]').onclick = () => { if (i > 0) { [dialog[i - 1], dialog[i]] = [dialog[i], dialog[i - 1]]; saveRender(); } };
+    div.querySelector('[data-op=dn]').onclick = () => { if (i < dialog.length - 1) { [dialog[i + 1], dialog[i]] = [dialog[i], dialog[i + 1]]; saveRender(); } };
+    div.querySelector('[data-op=del]').onclick = () => { dialog.splice(i, 1); saveRender(); };
+    ed.appendChild(div);
+  });
+}
+function saveRender() { LS.set('ds.dialog', dialog); renderEditor(); }
+$('addLine').onclick = () => { dialog.push({ role: dialog.length % 2 ? 'her' : 'him', text: '' }); saveRender(); };
+$('clearLines').onclick = () => { if (confirm('清空全部对话？')) { dialog = []; saveRender(); } };
+
+/* --- 导出 SRT 字幕（带时间戳，供配音软件同步使用） ---
+   时间计算与 4K 导出/播放引擎完全一致：
+   - 配置了 TTS API：用已缓存语音的真实时长（最准）
+   - 未配置：按 160字/分钟 × 语速 估算
+   - 句间停顿 0.45s */
+function fmtSrt(sec) {
+  const h = String(Math.floor(sec / 3600)).padStart(2, '0');
+  const m = String(Math.floor(sec % 3600 / 60)).padStart(2, '0');
+  const s = String(Math.floor(sec % 60)).padStart(2, '0');
+  const ms = String(Math.round(sec % 1 * 1000)).padStart(3, '0');
+  return `${h}:${m}:${s},${ms}`;
+}
+$('srtBtn').onclick = async () => {
+  if (!dialog.length) return toast('对话为空');
+  toast('⏳ 正在计算时间轴…');
+  // 尝试获取真实语音时长（仅 API 引擎且已缓存/可请求时）
+  const durs = [];
+  for (const item of dialog) {
+    let dur = item.text.length / (160 * parseFloat($('rate').value)) * 60;   // 秒
+    if (ttsCfg.engine === 'api' || ttsCfg.engine === 'siliconflow') {
+      try {
+        const url = ttsCfg.url, key = ttsCfg.key;
+        if (url && key) {
+          const voice = item.role === 'him' ? ttsCfg.him : ttsCfg.her;
+          const ck = 'v4k' + item.role + '|' + item.text;
+          let objUrl;
+          if (audioCache.has(ck)) objUrl = audioCache.get(ck);
+          else {
+            const res = await fetch(url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+              body: JSON.stringify({ model: ttsCfg.model || 'tts-1', input: item.text, voice, response_format: 'mp3' })
+            });
+            if (res.ok) { objUrl = URL.createObjectURL(await res.blob()); audioCache.set(ck, objUrl); }
+          }
+          if (objUrl) {
+            const a = new Audio(objUrl);
+            await new Promise(r => { a.onloadedmetadata = r; setTimeout(r, 2000); });
+            if (isFinite(a.duration) && a.duration > 0) dur = a.duration / parseFloat($('rate').value);
+          }
+        }
+      } catch (e) { /* 用估算 */ }
+    }
+    durs.push(Math.max(dur, 1));
+  }
+  let srt = '', t = 0;
+  dialog.forEach((item, i) => {
+    const start = t, end = t + durs[i];
+    srt += `${i + 1}\n${fmtSrt(start)} --> ${fmtSrt(end)}\n${item.text}\n\n`;
+    t = end + 0.45;
+  });
+  // 加 BOM 保证 Windows 记事本/剪辑软件识别中文
+  const blob = new Blob(['﻿' + srt], { type: 'text/plain;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'dialog-blog.srt';
+  a.click();
+  toast(`✅ 已导出 ${dialog.length} 条字幕，总长约 ${Math.round(t / 60)} 分钟`);
+};
+
+/* ============ Tab3: style settings ============ */
+const GRADS = {
+  grad1: 'linear-gradient(135deg,#1a2a6c,#b21f1f,#fdbb2d)',
+  grad2: 'linear-gradient(135deg,#0f2027,#203a43,#2c5364)',
+  grad3: 'linear-gradient(135deg,#41295a,#2f0743)',
+  grad4: 'linear-gradient(135deg,#134e5e,#71b280)',
+  grad5: 'linear-gradient(135deg,#232526,#414345)',
+  grad6: 'linear-gradient(135deg,#c31432,#240b36)',
+};
+// 恢复表单值
+$('bgUpload').onclick = () => $('bgFile').click();
+$('bgFile').onchange = e => {
+  const f = e.target.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = () => { settings.bgImg = r.result; settings.bg = 'custom'; saveSettings(); applySettings(); toast('背景已更换'); };
+  r.readAsDataURL(f);
+};
+['shade', 'stagePos', 'aspectSel', 'fontFamily', 'fontSize', 'fontWeight', 'himColor', 'herColor', 'showBubbles', 'himName', 'herName', 'himGender', 'herGender'].forEach(id => {
+  $(id).addEventListener('input', () => {
+    if (id === 'aspectSel') settings.aspect = $(id).value;
+    else settings[id] = id === 'showBubbles' ? $(id).checked :
+      (['shade', 'fontSize'].includes(id) ? parseInt($(id).value) : $(id).value);
+    saveSettings(); applySettings();
+  });
+});
+/* TTS settings persistence */
+const ttsCfg = LS.get('ds.tts', { engine: 'local', url: '', key: '', model: '', him: 'male-qn-qingse', her: 'female-shaonv', himVoice: 'auto', herVoice: 'auto' });
+function syncTtsForm() {
+  $('ttsEngine').value = ttsCfg.engine;
+  $('ttsUrl').value = ttsCfg.url; $('ttsKey').value = ttsCfg.key; $('ttsModel').value = ttsCfg.model;
+  $('ttsHimVoice').value = ttsCfg.him; $('ttsHerVoice').value = ttsCfg.her;
+  const isApi = ttsCfg.engine === 'api' || ttsCfg.engine === 'siliconflow';
+  $('ttsApiRow').style.display = isApi ? '' : 'none';
+  $('edgeHint').style.display = ttsCfg.engine === 'edge' ? '' : 'none';
+}
+$('ttsEngine').onchange = () => { ttsCfg.engine = $('ttsEngine').value; applyTtsPreset(); LS.set('ds.tts', ttsCfg); syncTtsForm(); renderVoicePicker(); };
+/* 硅基流动预设：送额度、CosyVoice 真人感 */
+const TTS_PRESETS = {
+  siliconflow: {
+    url: 'https://api.siliconflow.cn/v1/audio/speech',
+    model: 'FunAudioLLM/CosyVoice2-0.5B',
+    him: 'FunAudioLLM/CosyVoice2-0.5B:alex',
+    her: 'FunAudioLLM/CosyVoice2-0.5B:anna',
+    hint: '✅ 已填入硅基流动免费预设，只需注册 siliconflow.cn 领取额度并填入 API Key'
+  },
+  api: { hint: '填入任意兼容 OpenAI TTS 格式的服务地址' }
+};
+function applyTtsPreset() {
+  const p = TTS_PRESETS[ttsCfg.engine];
+  if (!p) { $('ttsPresetHint').textContent = ''; return; }
+  if (p.url && !$('ttsUrl').value) $('ttsUrl').value = p.url;
+  if (p.model && !$('ttsModel').value) $('ttsModel').value = p.model;
+  if (p.him && !$('ttsHimVoice').value) $('ttsHimVoice').value = p.him;
+  if (p.her && !$('ttsHerVoice').value) $('ttsHerVoice').value = p.her;
+  if (p.url) { ttsCfg.url = p.url; ttsCfg.model = p.model; ttsCfg.him = p.him; ttsCfg.her = p.her; LS.set('ds.tts', ttsCfg); }
+  $('ttsPresetHint').textContent = p.hint || '';
+}
+['ttsUrl', 'ttsKey', 'ttsModel', 'ttsHimVoice', 'ttsHerVoice'].forEach(id =>
+  $(id).onchange = () => {
+    ttsCfg.url = $('ttsUrl').value.trim(); ttsCfg.key = $('ttsKey').value.trim();
+    ttsCfg.model = $('ttsModel').value.trim(); ttsCfg.him = $('ttsHimVoice').value.trim(); ttsCfg.her = $('ttsHerVoice').value.trim();
+    LS.set('ds.tts', ttsCfg);
+  });
+syncTtsForm();
+
+/* --- TTS via API (OpenAI-compatible /audio/speech), returns Audio element or null --- */
+const audioCache = new Map();   // text+role -> objectURL, avoids re-requesting
+async function apiSpeak(item) {
+  const url = ttsCfg.url, key = ttsCfg.key;
+  if (!url || !key) throw new Error('请填写 TTS Base URL 和 Key');
+  const voice = item.role === 'him' ? ttsCfg.him : ttsCfg.her;
+  // API 音色也支持性别覆写：若某音色名含性别后缀规则则尊重用户手填；否则原样使用
+  const ck = item.role + '|' + item.text;
+  if (audioCache.has(ck)) { const a = new Audio(audioCache.get(ck)); await a.play(); return a; }
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+    body: JSON.stringify({ model: ttsCfg.model || 'tts-1', input: item.text, voice, response_format: 'mp3' })
+  });
+  if (!res.ok) throw new Error('TTS HTTP ' + res.status + ' ' + (await res.text()).slice(0, 150));
+  const blob = await res.blob();
+  audioCache.set(ck, URL.createObjectURL(blob));
+  const a = new Audio(audioCache.get(ck));
+  a.playbackRate = parseFloat($('rate').value);
+  await a.play();
+  return a;
+}
+/* speak(): use API TTS if configured, else local SpeechSynthesis. Returns {audio}|null */
+/* 角色性别映射：角色A(him)/角色B(her) 的实际声音性别由设置决定 */
+function roleGender(role) { return role === 'him' ? (settings.himGender || 'male') : (settings.herGender || 'female'); }
+
+async function speak(item) {
+  // Edge 微软真人声：优先用在线 Neural 音色（免费无限量），找不到就回退本机
+  if (ttsCfg.engine === 'edge' && 'speechSynthesis' in window) {
+    const vs = speechSynthesis.getVoices();
+    const selLang = $('langSel').value;
+    const want = LANG_NAME[selLang] ? LANG_NAME[selLang].speech : 'zh-CN';
+    // Neural 音色名单（微软 Edge/自然语音，Windows 11 自带部分）
+    const NEURAL = {
+      zh:    { male: /Yunxi|Yunyang|Yunjian/i, female: /Xiaoxiao|Xiaoyi|Xiaoni/i },
+      zhHK:  { male: /WanLung|HiuMaan/i,       female: /HiuGaai|HiuMaan/i },
+      en:    { male: /Christopher|Eric|Guy/i,  female: /Jenny|Aria|Michelle/i },
+      ja:    { male: /Keita/i,                 female: /Nanami/i },
+      es:    { male: /Alvaro/i,                female: /Elvira/i },
+      ko:    { male: /InJoon/i,                female: /SunHi/i },
+    };
+    const prefix = want.slice(0, 2);
+    const pool = vs.filter(v => v.lang.startsWith(prefix));
+    const nn = NEURAL[prefix === 'zh' ? (want.includes('HK') ? 'zhHK' : 'zh') : prefix] || null;
+    const genderKey = roleGender(item.role);   // 'male' | 'female'
+    let voice = null;
+    // 手动指定的音色优先
+    const manualName = item.role === 'him' ? ttsCfg.himVoice : ttsCfg.herVoice;
+    if (manualName && manualName !== 'auto') {
+      voice = vs.find(v => v.name === manualName);
+    }
+    if (!voice && nn) voice = pool.find(v => nn[genderKey].test(v.name)) ||
+                      pool.find(v => /Neural|Natural/i.test(v.name)) || pool[0];
+    if (voice) {
+      const u = new SpeechSynthesisUtterance(item.text);
+      u.voice = voice; u.lang = voice.lang; u.rate = parseFloat($('rate').value);
+      speechSynthesis.speak(u);
+      return { utter: u };
+    }
+    // 没有 Neural 音色 → 落回本机通用逻辑
+  }
+  if (ttsCfg.engine === 'api' || ttsCfg.engine === 'siliconflow') {
+    try { const a = await apiSpeak(item); return { audio: a }; }
+    catch (e) { toast('TTS API 失败，回退本机朗读：' + e.message); }
+  }
+  if (!('speechSynthesis' in window)) return null;
+  const u = new SpeechSynthesisUtterance(item.text);
+  // 手动指定音色（任何引擎下都生效）
+  const manualName = item.role === 'him' ? ttsCfg.himVoice : ttsCfg.herVoice;
+  // 语言自动检测：按字符集判断（粤语写法也是汉字 → 按 TTS 语言选择决定）
+  const selLang = $('langSel').value;
+  u.lang = LANG_NAME[selLang] ? LANG_NAME[selLang].speech : 'zh-CN';
+  if (selLang === 'mix') u.lang = /[一-鿿]/.test(item.text) ? 'zh-CN' : 'en-US';
+  if (selLang === 'zh' && !/[一-鿿]/.test(item.text)) u.lang = 'en-US';   // 混入的英文句子
+  if (selLang === 'en' && /[一-鿿]/.test(item.text)) u.lang = 'zh-CN';
+  u.rate = parseFloat($('rate').value);
+  const all = speechSynthesis.getVoices();
+  const vs = all.filter(v => v.lang.startsWith(u.lang.slice(0, 2)));
+  const isMale = roleGender(item.role) === 'male';
+  if (manualName && manualName !== 'auto') {
+    const mv = all.find(v => v.name === manualName);
+    if (mv) { u.voice = mv; u.lang = mv.lang; speechSynthesis.speak(u); return { utter: u }; }
+  }
+  if (vs.length) u.voice = vs[isMale ? 0 : Math.min(1, vs.length - 1)];
+  speechSynthesis.speak(u);
+  return { utter: u };
+}
+
+/* --- 音色选择器（男/女下拉 + 试听） --- */
+function renderVoicePicker() {
+  const show = ['local', 'edge'].includes(ttsCfg.engine);
+  $('voicePicker').style.display = show ? '' : 'none';
+  if (!show || !('speechSynthesis' in window)) return;
+  const fill = (sel, cur) => {
+    sel.innerHTML = '';
+    const vs = speechSynthesis.getVoices();
+    const auto = document.createElement('option');
+    auto.value = 'auto'; auto.textContent = `自动（${vs.length} 个可用音色）`;
+    sel.appendChild(auto);
+    vs.sort((a, b) => a.lang.localeCompare(b.lang)).forEach(v => {
+      const o = document.createElement('option');
+      o.value = v.name;
+      o.textContent = `${v.name} · ${v.lang}`;
+      sel.appendChild(o);
+    });
+    sel.value = vs.some(v => v.name === cur) || cur === 'auto' ? cur : 'auto';
+  };
+  fill($('himVoiceSel'), ttsCfg.himVoice);
+  fill($('herVoiceSel'), ttsCfg.herVoice);
+}
+$('himVoiceSel').onchange = () => { ttsCfg.himVoice = $('himVoiceSel').value; LS.set('ds.tts', ttsCfg); };
+$('herVoiceSel').onchange = () => { ttsCfg.herVoice = $('herVoiceSel').value; LS.set('ds.tts', ttsCfg); };
+function previewVoice(role) {
+  if (!('speechSynthesis' in window)) return;
+  speechSynthesis.cancel();
+  const name = role === 'him' ? ttsCfg.himVoice : ttsCfg.herVoice;
+  const u = new SpeechSynthesisUtterance(role === 'him'
+    ? `你好，我是${NAME.him()}，很高兴认识你。`
+    : `嗨，大家好呀，我是${NAME.her()}，欢迎收听。`);
+  if (name && name !== 'auto') {
+    const v = speechSynthesis.getVoices().find(v => v.name === name);
+    if (v) { u.voice = v; u.lang = v.lang; }
+  }
+  speechSynthesis.speak(u);
+}
+$('himPreview').onclick = () => previewVoice('him');
+$('herPreview').onclick = () => previewVoice('her');
+if ('speechSynthesis' in window) {
+  speechSynthesis.onvoiceschanged = renderVoicePicker;
+  setTimeout(renderVoicePicker, 300);   // 嗓音列表异步加载
+}
+$('resetStyle').onclick = () => { settings = { ...DEFAULT_SETTINGS }; saveSettings(); syncForm(); applySettings(); toast('已重置'); };
+
+function saveSettings() { LS.set('ds.settings', settings); }
+function syncForm() {
+  $('shade').value = settings.shade; $('stagePos').value = settings.stagePos;
+  $('aspectSel').value = settings.aspect;
+  $('fontFamily').value = settings.fontFamily; $('fontSize').value = settings.fontSize;
+  $('fontWeight').value = settings.fontWeight;
+  $('himColor').value = settings.himColor; $('herColor').value = settings.herColor;
+  $('himName').value = settings.himName; $('herName').value = settings.herName;
+  $('himGender').value = settings.himGender; $('herGender').value = settings.herGender;
+  $('showBubbles').checked = settings.showBubbles;
+  renderSwatches();
+}
+function renderSwatches() {
+  const box = $('bgSwatches'); box.innerHTML = '';
+  Object.entries(GRADS).forEach(([k, v]) => {
+    const d = document.createElement('div');
+    d.className = 'swatch' + (settings.bg === k && !settings.bgImg ? ' on' : '');
+    d.style.background = v; d.title = k;
+    d.onclick = () => { settings.bg = k; settings.bgImg = null; saveSettings(); applySettings(); renderSwatches(); };
+    box.appendChild(d);
+  });
+  if (settings.bgImg) {
+    const d = document.createElement('div');
+    d.className = 'swatch on'; d.style.background = `url(${settings.bgImg}) center/cover`;
+    d.title = '自定义图片'; box.appendChild(d);
+  }
+}
+function applySettings() {
+  const bgEl = $('playerBg'), sh = $('playerShade'), st = $('stage'), k = $('karaoke'), wrap = $('playerWrap');
+  bgEl.style.background = settings.bgImg ? `url(${settings.bgImg}) center/cover` : GRADS[settings.bg] || GRADS.grad1;
+  sh.style.background = `rgba(0,0,0,${settings.shade / 100})`;
+  // 画幅
+  wrap.classList.toggle('portrait', settings.aspect === '9:16' || settings.aspect === '4:5');
+  wrap.classList.toggle('square', settings.aspect === '1:1');
+  wrap.style.aspectRatio = settings.aspect.replace(':', '/');
+  // 字幕位置（free 模式下覆盖预设定位）
+  st.className = settings.stagePos;
+  st.style.width = (settings.stageW || 80) + '%';
+  if (settings.stagePos === 'free') {
+    st.style.left = settings.stageX + '%';
+    st.style.top = settings.stageY + '%';
+    st.style.bottom = 'auto';
+    st.style.transform = 'translate(-50%,-50%)';
+  } else {
+    st.style.left = ''; st.style.top = ''; st.style.bottom = ''; st.style.transform = '';
+  }
+  k.style.fontFamily = settings.fontFamily;
+  k.style.fontSize = settings.fontSize + 'px';
+  k.style.fontWeight = settings.fontWeight;
+  document.documentElement.style.setProperty('--him', settings.himColor);
+  document.documentElement.style.setProperty('--her', settings.herColor);
+  $('chat').style.display = settings.showBubbles ? '' : 'none';
+  $('shadeVal').textContent = settings.shade + '%';
+  $('fsizeVal').textContent = settings.fontSize + 'px';
+  renderSwatches();
+}
+
+/* --- 字幕区自由拖动 + 左右缩放 --- */
+(function () {
+  const st = $('stage'), wrap = $('playerWrap');
+  let drag = null;   // 'move' | 'left' | 'right'
+  function begin(mode, e) {
+    drag = mode;
+    st.setPointerCapture(e.pointerId);
+    if (mode === 'move' && settings.stagePos !== 'free') {
+      settings.stagePos = 'free'; $('stagePos').value = 'free';
+      applySettings(); saveSettings();
+    }
+    e.preventDefault();
+  }
+  function onMove(e) {
+    if (!drag) return;
+    const r = wrap.getBoundingClientRect();
+    if (drag === 'move') {
+      const x = Math.min(95, Math.max(5, (e.clientX - r.left) / r.width * 100));
+      const y = Math.min(95, Math.max(5, (e.clientY - r.top) / r.height * 100));
+      settings.stageX = Math.round(x); settings.stageY = Math.round(y);
+      st.style.left = x + '%'; st.style.top = y + '%';
+    } else {
+      // 宽度缩放：以中心为准，计算指针相对中心距离
+      const cx = r.left + r.width * settings.stageX / 100;
+      const half = Math.abs(e.clientX - cx) * 2 / r.width * 100;
+      settings.stageW = Math.min(98, Math.max(20, Math.round(half)));
+      st.style.width = settings.stageW + '%';
+    }
+  }
+  function end() { if (drag) { drag = null; saveSettings(); syncPosSliders(); } }
+  st.addEventListener('pointerdown', e => {
+    if (e.target.closest('#playerControls')) return;
+    begin(e.target.closest('.rs-handle') ? (e.target.id === 'rsL' ? 'left' : 'right') : 'move', e);
+  });
+  st.addEventListener('pointermove', onMove);
+  st.addEventListener('pointerup', end);
+  st.addEventListener('pointercancel', end);
+  // —— 数值滑杆与拖拽双向同步 ——
+  function syncPosSliders() {
+    $('posX').value = settings.stageX; $('posY').value = settings.stageY; $('posW').value = settings.stageW;
+  }
+  $('posX').oninput = () => {
+    if (settings.stagePos !== 'free') { settings.stagePos = 'free'; $('stagePos').value = 'free'; applySettings(); }
+    settings.stageX = +$('posX').value; applySettings(); saveSettings();
+  };
+  $('posY').oninput = () => {
+    if (settings.stagePos !== 'free') { settings.stagePos = 'free'; $('stagePos').value = 'free'; applySettings(); }
+    settings.stageY = +$('posY').value; applySettings(); saveSettings();
+  };
+  $('posW').oninput = () => { settings.stageW = +$('posW').value; applySettings(); saveSettings(); };
+  $('subtitleReset').onclick = () => {
+    settings.stagePos = 'bottom'; settings.stageX = 50; settings.stageY = 70; settings.stageW = 80;
+    $('stagePos').value = 'bottom'; saveSettings(); applySettings(); syncPosSliders(); toast('字幕已复位');
+  };
+  syncPosSliders();
+  st.addEventListener('dragstart', e => e.preventDefault());
+  // 初始应用宽度
+  st.style.width = (settings.stageW || 80) + '%';
+})();
+
+/* ============ Player engine (karaoke + TTS) ============ */
+const NAME = { him: () => settings.himName || '角色A', her: () => settings.herName || '角色B' };
+let idx = 0, playing = false, paused = false;
+
+/* 音波动画：随机抖动振幅 */
+setInterval(() => {
+  if (!playing || paused) return;
+  document.querySelectorAll('#wave span').forEach((s, i) => {
+    s.style.animationDelay = (Math.random() * -0.9).toFixed(2) + 's';
+    s.style.animationDuration = (0.6 + Math.random() * 0.7).toFixed(2) + 's';
+  });
+}, 700);
+
+function addBubble(item) {
+  const div = document.createElement('div');
+  div.className = 'bubble ' + item.role;
+  div.innerHTML = `<span class="who">${NAME[item.role]()}</span><span class="msg"></span>`;
+  $('chat').appendChild(div); $('chat').scrollTop = $('chat').scrollHeight;
+  return div.querySelector('.msg');
+}
+function paint(el, text, doneW, size) {
+  let html = '';
+  for (let i = 0; i < text.length; i++) html += `<span class="${i < doneW ? 'done' : 'todo'}">${text[i]}</span>`;
+  el.innerHTML = html;
+}
+function paintKaraoke(item, doneW) {
+  $('karaoke').className = item.role + 'Active';
+  $('wave').className = item.role + 'Active';
+  paint($('karaoke'), item.text, doneW);
+}
+function speak(item) {
+  if (!('speechSynthesis' in window)) return;
+  const u = new SpeechSynthesisUtterance(item.text);
+  u.lang = 'zh-CN'; u.rate = parseFloat($('rate').value);
+  const vs = speechSynthesis.getVoices().filter(v => v.lang.startsWith('zh'));
+  if (vs.length) u.voice = vs[item.role === 'him' ? 0 : Math.min(1, vs.length - 1)];
+  speechSynthesis.speak(u);
+}
+async function playLine() {
+  if (idx >= dialog.length) { stopAll('已结束，点击播放可重新开始'); return; }
+  const item = dialog[idx];
+  const span = settings.showBubbles ? addBubble(item) : null;
+  paintKaraoke(item, 0);
+  const tts = await speak(item);            // API TTS: await audio start; local: fire & forget
+  const total = item.text.length;
+  let speed = 160 * parseFloat($('rate').value);   // 字/分钟 fallback (local TTS)
+  // API TTS: sync subtitle to audio duration
+  if (tts && tts.audio && isFinite(tts.audio.duration) && tts.audio.duration > 0) {
+    speed = total / tts.audio.duration * 60;
+  }
+  await new Promise(resolve => {
+    const t0 = performance.now();
+    function tick(now) {
+      if (!playing) { resolve(); return; }
+      const done = Math.floor((now - t0) / 60000 * speed);
+      if (done >= total) { paintKaraoke(item, total); if (span) paint(span, item.text, total); resolve(); return; }
+      paintKaraoke(item, done); if (span) paint(span, item.text, done);
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  });
+  // if API audio still playing, wait it out (audio longer than subtitle)
+  if (tts && tts.audio) {
+    await new Promise(r => {
+      const w = setInterval(() => {
+        if (!playing || paused || tts.audio.paused || tts.audio.ended) { clearInterval(w); r(); }
+      }, 100);
+    });
+  }
+  if (!playing) return;
+  idx++;
+  await new Promise(r => setTimeout(r, 450));
+  if (playing) playLine();
+}
+async function start() {
+  if (playing) return;
+  if (!dialog.length) { toast('请先在 ② 编辑对话'); goTab(2); return; }
+  if ('speechSynthesis' in window) speechSynthesis.getVoices();
+  if (idx >= dialog.length) { idx = 0; $('chat').innerHTML = ''; }
+  playing = true; paused = false;
+  $('play').disabled = true; $('pause').disabled = false; $('stop').disabled = false;
+  $('pause').textContent = '⏸ 暂停';
+  $('wave').classList.remove('stop');
+  await playLine();
+}
+function stopAll(msg) {
+  playing = false;
+  if ('speechSynthesis' in window) speechSynthesis.cancel();
+  $('play').disabled = false; $('pause').disabled = true; $('stop').disabled = true;
+  $('wave').classList.add('stop');
+  if (msg !== false) { $('karaoke').innerHTML = ''; }
+}
+$('play').onclick = start;
+$('stop').onclick = () => { stopAll(); idx = 0; $('chat').innerHTML = ''; $('karaoke').innerHTML = ''; };
+$('pause').onclick = () => {
+  if (!('speechSynthesis' in window)) return;
+  if (paused) {
+    // 继续：取消本句残留语音，从当前句重新开始播放
+    paused = false;
+    speechSynthesis.cancel();
+    playing = false;              // 避免和 start() 的防重入冲突
+    $('pause').textContent = '⏸ 暂停';
+    $('wave').classList.remove('stop');
+    start();
+  } else {
+    speechSynthesis.pause(); paused = true; playing = false; $('pause').textContent = '▶ 继续'; $('wave').classList.add('stop');
+  }
+};
+
+/* ============ MP4/WebM export (MediaRecorder) ============ */
+let recording = false;
+$('exportBtn').onclick = async () => {
+  if (recording) return;
+  if (!dialog.length) { toast('请先在 ② 编辑对话'); goTab(2); return; }
+  const wrap = $('playerWrap');
+  // —— 兼容性预检与降级 ——
+  if (typeof wrap.captureStream !== 'function' && typeof wrap.mozCaptureStream !== 'function') {
+    $('exportStatus').textContent = '❌ 当前浏览器不支持画面捕获。请用 Chrome / Edge 打开本页面（双击可用浏览器打开，不要用 IE/旧浏览器）';
+    return;
+  }
+  if (typeof MediaRecorder === 'undefined') {
+    $('exportStatus').textContent = '❌ 当前浏览器不支持 MediaRecorder 录制。请改用 Chrome / Edge';
+    return;
+  }
+  let stream;
+  try {
+    stream = (wrap.captureStream || wrap.mozCaptureStream).call(wrap, 30);
+    if (!stream || !stream.getVideoTracks().length) throw new Error('没有获取到画面轨');
+  } catch (e) {
+    $('exportStatus').textContent = '❌ 画面捕获失败：' + e.message + '。请改用 Chrome / Edge 打开';
+    return;
+  }
+  // —— 录制期间隐藏控制按钮，输出干净视频 ——
+  wrap.classList.add('recording');
+  // mix in audio (TTS audio elements)
+  const dest = new AudioContext();
+  await dest.resume().catch(() => {});
+  const destNode = dest.createMediaStreamDestination();
+  const origSpeak = speak;
+  // patch speak to also route API audio into recording
+  speak = async function (item) {
+    const r = await origSpeak(item);
+    if (r && r.audio) {
+      try {
+        const src = dest.createMediaElementSource(r.audio);
+        // route to both destination (recording) and speakers
+        src.connect(destNode); src.connect(dest.destination);
+      } catch (e) { /* element already routed */ }
+    } else if (r && r.utter) {
+      $('exportStatus').textContent = '⚠️ 本机 TTS 语音无法录入视频，建议在 语音音色 里配置 TTS API';
+    }
+    return r;
+  };
+  // mime 逐级降级：mp4 → webm(vp9+opus) → webm(vp8) → 默认
+  const candidates = ['video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
+  const mime = candidates.find(m => MediaRecorder.isTypeSupported(m));
+  if (!mime) {
+    wrap.classList.remove('recording');
+    $('exportStatus').textContent = '❌ 浏览器没有任何可用的录制格式，请换 Chrome / Edge';
+    return;
+  }
+  const rec = new MediaRecorder(new MediaStream([...stream.getVideoTracks(), ...destNode.stream.getAudioTracks()]), { mimeType: mime });
+  const chunks = [];
+  rec.ondataavailable = e => e.data.size && chunks.push(e.data);
+  rec.onerror = e => {
+    wrap.classList.remove('recording');
+    $('exportStatus').textContent = '❌ 录制出错：' + (e.error && e.error.name || 'unknown');
+  };
+  rec.onstop = () => {
+    speak = origSpeak; recording = false;
+    wrap.classList.remove('recording');
+    $('exportBtn').disabled = false;
+    $('exportStatus').textContent = '💾 正在合成文件…';
+    const blob = new Blob(chunks, { type: mime });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'dialog-blog.' + (mime.includes('mp4') ? 'mp4' : 'webm');
+    a.click();
+    $('exportStatus').textContent = `✅ 已导出 ${a.download}（${(blob.size / 1048576).toFixed(1)} MB）`;
+  };
+  // start recording + playback from the beginning
+  recording = true; $('exportBtn').disabled = true;
+  $('exportStatus').textContent = '🔴 录制中…（画面已隐藏控制按钮，请勿切换页面）';
+  idx = 0; $('chat').innerHTML = ''; $('karaoke').innerHTML = '';
+  rec.start(500);
+  await start();
+  // wait until playback finished
+  await new Promise(r => {
+    const w = setInterval(() => { if (!playing && !paused) { clearInterval(w); r(); } }, 200);
+  });
+  setTimeout(() => rec.state !== 'inactive' && rec.stop(), 600);
+};
+
+/* 控制条已在画幅外，无需隐藏逻辑（保留 cleanMode 兼容避免报错） */
+
+/* ============ 4K canvas export (不依赖元素 captureStream) ============
+   原理：把背景/音波/卡拉OK字幕逐帧绘制到离屏 canvas（4K 分辨率），
+   用 canvas.captureStream + MediaRecorder 录制。兼容性远好于 DOM 元素捕获。 */
+/* 导出清晰度：各档分辨率（按画幅比例）与码率 */
+const K4 = { '16:9': [3840, 2160], '9:16': [2160, 3840], '1:1': [2160, 2160], '4:5': [2160, 2700] };
+const Q1080 = { '16:9': [1920, 1080], '9:16': [1080, 1920], '1:1': [1080, 1080], '4:5': [1080, 1350] };
+const Q1440 = { '16:9': [2560, 1440], '9:16': [1440, 2560], '1:1': [1440, 1440], '4:5': [1440, 1800] };
+const Q720  = { '16:9': [1280, 720],  '9:16': [720, 1280],  '1:1': [720, 720],   '4:5': [720, 900] };
+function exportRes() {
+  const q = $('qualitySel').value, a = settings.aspect;
+  const table = q === '4K' ? K4 : q === '1440' ? Q1440 : q === '720' ? Q720 : Q1080;
+  return table[a] || Q1080[a];
+}
+function exportBitrate() {
+  const q = $('qualitySel').value;
+  return q === '4K' ? 40_000_000 : q === '1440' ? 20_000_000 : q === '720' ? 4_000_000 : 10_000_000;
+}
+/* 文件大小预览：按对话总时长 × 码率估算 */
+function updateSizeEst() {
+  const el = $('sizeEst');
+  if (!dialog.length) { el.textContent = '≈ --'; return; }
+  // 估算总时长：中文字幕 160字/分钟（与播放引擎一致）+ 句间停顿
+  const totalChars = dialog.reduce((s, x) => s + x.text.length, 0);
+  const secs = totalChars / (160 * parseFloat($('rate').value)) * 60 + dialog.length * 0.45;
+  const bytes = secs * exportBitrate() / 8;
+  const mb = bytes / 1048576;
+  el.textContent = mb >= 1024 ? `≈ ${(mb / 1024).toFixed(1)} GB（约${Math.round(secs / 60)}分钟）`
+                 : `≈ ${Math.round(mb)} MB（约${Math.round(secs / 60)}分钟）`;
+}
+$('qualitySel').addEventListener('change', updateSizeEst);
+$('rate').addEventListener('input', updateSizeEst);
+let bgImageEl = null;   // 缓存背景图 HTMLImageElement
+if (settings.bgImg) { const im = new Image(); im.src = settings.bgImg; bgImageEl = im; }
+
+function drawWave(c, x, y, w, h, color, t) {
+  c.fillStyle = color;
+  const n = 15, gap = w / n * 0.45, bw = w / n * 0.55;
+  for (let i = 0; i < n; i++) {
+    const ph = Math.sin(t * 5 + i * 1.7) * 0.5 + 0.5;
+    const bh = h * (0.15 + ph * 0.85);
+    c.globalAlpha = 0.55 + ph * 0.45;
+    c.beginPath();
+    c.roundRect(x + i * (bw + gap), y + (h - bh) / 2, bw, bh, bw / 2);
+    c.fill();
+  }
+  c.globalAlpha = 1;
+}
+function wrapText(c, text, maxW) {
+  const lines = [];
+  let line = '';
+  for (const ch of text) {
+    if (c.measureText(line + ch).width > maxW && line) { lines.push(line); line = ch; }
+    else line += ch;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+function drawFrame(ctx, W, H, item, doneW, t) {
+  // 背景
+  ctx.clearRect(0, 0, W, H);
+  if (bgImageEl && bgImageEl.complete && bgImageEl.naturalWidth) {
+    const s = Math.max(W / bgImageEl.naturalWidth, H / bgImageEl.naturalHeight);
+    const dw = bgImageEl.naturalWidth * s, dh = bgImageEl.naturalHeight * s;
+    ctx.drawImage(bgImageEl, (W - dw) / 2, (H - dh) / 2, dw, dh);
+  } else {
+    const g = ctx.createLinearGradient(0, 0, W, H);
+    const grad = GRADS[settings.bg] || GRADS.grad1;
+    const cols = grad.match(/#[0-9a-f]{6}/gi) || ['#1a2a6c', '#b21f1f', '#fdbb2d'];
+    cols.forEach((cc, i) => g.addColorStop(i / (cols.length - 1), cc));
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  }
+  // 遮罩
+  ctx.fillStyle = `rgba(0,0,0,${settings.shade / 100})`;
+  ctx.fillRect(0, 0, W, H);
+  if (!item) return;
+  const color = item.role === 'him' ? settings.himColor : settings.herColor;
+  const fs = Math.round(H * (settings.fontSize / 540) * 0.55);   // 相对字号（540p 基准）
+  ctx.font = `${settings.fontWeight} ${fs}px ${settings.fontFamily}`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const maxW = W * (settings.stageW || 80) / 100 * 0.96;
+  const lines = wrapText(ctx, item.text, maxW);
+  const lh = fs * 1.5;
+  const centerY = H * (settings.stageY || 70) / 100;
+  const startY = centerY - (lines.length - 1) * lh / 2;
+  // 音波（字幕上方）
+  const waveW = maxW * 0.35, waveH = fs * 0.9;
+  drawWave(ctx, (W - waveW) / 2, startY - lh / 2 - waveH - fs * 0.4, waveW, waveH, color, t);
+  // 逐字卡拉OK（行内逐字高亮）
+  let charIdx = 0;
+  lines.forEach((ln, li) => {
+    const y = startY + li * lh;
+    const totalW = ctx.measureText(ln).width;
+    let x = (W - totalW) / 2;
+    for (const ch of ln) {
+      const cw = ctx.measureText(ch).width;
+      ctx.globalAlpha = 0.42;
+      ctx.fillStyle = color;
+      ctx.fillText(ch, x + cw / 2, y);
+      if (charIdx < doneW) {
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(ch, x + cw / 2, y);
+      }
+      x += cw; charIdx++;
+    }
+  });
+  ctx.globalAlpha = 1;
+}
+
+$('export4kBtn').onclick = async () => {
+  if (recording) return;
+  if (!dialog.length) { toast('请先在 ② 编辑对话'); goTab(2); return; }
+  const st = $('exportStatus');
+  if (typeof MediaRecorder === 'undefined') { st.textContent = '❌ 浏览器缺少 MediaRecorder，请换 Chrome/Edge'; return; }
+  const [W, H] = exportRes();
+  const qLabel = $('qualitySel').value;
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d');
+  // 背景图缓存
+  if (settings.bgImg && (!bgImageEl || bgImageEl.src !== settings.bgImg)) {
+    bgImageEl = new Image(); bgImageEl.src = settings.bgImg;
+    st.textContent = '⏳ 载入背景图…';
+    await new Promise(r => { bgImageEl.onload = r; bgImageEl.onerror = r; setTimeout(r, 3000); });
+  }
+  // 编码优先级：H.264 MP4 + AAC —— iPhone 原生播放/YouTube 上传/全平台通吃的黄金组合
+  // YouTube 官方推荐上传规格：MP4 容器 + H.264 视频 + AAC 音频
+  const candidates = [
+    'video/mp4;codecs=avc1.640028,mp4a.40.2',   // H.264 High + AAC-LC（最佳画质档）
+    'video/mp4;codecs=avc1.42E01E,mp4a.40.2',   // H.264 Baseline + AAC-LC（兼容性最广）
+    'video/mp4;codecs=avc1,mp4a.40.2',
+    'video/mp4;codecs=avc1',
+    'video/mp4;codecs=h264',
+    'video/mp4',
+    'video/webm;codecs=vp9,opus',               // 兜底：仅电脑浏览器能播
+    'video/webm;codecs=vp8,opus',
+    'video/webm',
+  ];
+  const mime = candidates.find(m => MediaRecorder.isTypeSupported(m));
+  if (!mime) { st.textContent = '❌ 无可用录制格式，请换 Chrome/Edge'; return; }
+  const appleFriendly = mime.includes('mp4');
+  if (!appleFriendly) toast('⚠️ 当前浏览器只能录 WebM（iPhone 无法播放），建议用 Chrome 126+ 或 Edge');
+  else if (!/avc1/.test(mime)) toast('⚠️ 录制为 MP4 但编码可能不是 H.264，若 iPhone 打不开请改用 Chrome/Edge');
+  // 帧率与分辨率对齐 YouTube 推荐：30fps 固定（已满足），H.264 High Profile 优先
+  const stream = cv.captureStream(30);   // 30fps：YouTube 推荐帧率，兼容性最好
+  // —— 音频轨：把 TTS API 语音路由进录制流 ——
+  let destNode = null;
+  let actxRef = null;
+  try {
+    actxRef = new AudioContext();
+    await actxRef.resume().catch(() => {});
+    destNode = actxRef.createMediaStreamDestination();
+    // 加一段静音铺底，保证即使某句没有语音，音轨也存在（避免 iPhone 对无音轨视频兼容问题）
+    const silent = actxRef.createOscillator();
+    const silentGain = actxRef.createGain();
+    silentGain.gain.value = 0;
+    silent.connect(silentGain).connect(destNode);
+    silent.start();
+  } catch (e) { console.warn('AudioContext 初始化失败', e); }
+  const tracks = [...stream.getVideoTracks(), ...(destNode ? destNode.stream.getAudioTracks() : [])];
+  const rec = new MediaRecorder(new MediaStream(tracks), { mimeType: mime, videoBitsPerSecond: exportBitrate() });
+  const chunks = [];
+  rec.ondataavailable = e => e.data.size && chunks.push(e.data);
+  rec.onstop = () => {
+    recording = false; $('export4kBtn').disabled = false;
+    st.textContent = '💾 正在合成文件…';
+    const blob = new Blob(chunks, { type: mime });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `dialog-blog-${qLabel}.${mime.includes('mp4') ? 'mp4' : 'webm'}`;
+    a.click();
+    if (!mime.includes('mp4')) st.textContent = `✅ 已导出，但为 WebM 格式（iPhone 原生播放器不支持）。发平台前请用剪映等工具转 MP4，或改用 Chrome 126+/Edge 重新导出`;
+    else st.textContent = `✅ 已导出 ${a.download}（${W}×${H}，${(blob.size / 1048576).toFixed(1)} MB）· iPhone 可直接播放`;
+    st.textContent = `✅ 已导出 ${a.download}（${W}×${H}，${(blob.size / 1048576).toFixed(1)} MB）`;
+    setTimeout(() => { $('exportProgress').style.display = 'none'; }, 4000);
+  };
+  recording = true; $('export4kBtn').disabled = true;
+  // 取消/暂停支持
+  let aborted = false;          // true=彻底取消（丢弃）
+  let pausedFlag = false;       // true=暂停中
+  let audio4k = null;           // 当前句的 API 语音，暂停时一并暂停
+  const waitWhilePaused = () => new Promise(r => {
+    const w = setInterval(() => { if (!pausedFlag) { clearInterval(w); r(); } }, 100);
+  });
+  // 进度条初始化
+  const totalLines = dialog.length;
+  let doneChars = 0, allChars = dialog.reduce((s, x) => s + x.text.length, 0);
+  $('exportProgress').style.display = '';
+  $('exportBar').style.width = '0%';
+  $('exportPct').innerHTML = '';
+  const pauseBtn = document.createElement('button');
+  pauseBtn.className = 'ghost'; pauseBtn.textContent = '⏸ 暂停';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'ghost'; cancelBtn.textContent = '✕ 取消导出';
+  cancelBtn.onclick = () => { aborted = true; pausedFlag = false; };
+  pauseBtn.onclick = () => {
+    pausedFlag = !pausedFlag;
+    pauseBtn.textContent = pausedFlag ? '▶ 继续导出' : '⏸ 暂停';
+    if (audio4k) { try { pausedFlag ? audio4k.pause() : audio4k.play(); } catch {} }
+  };
+  $('exportPct').appendChild(pauseBtn);
+  $('exportPct').appendChild(cancelBtn);
+  const setProgress = (charsDone, lineNo, note) => {
+    if (aborted) return;
+    const pct = Math.min(99, allChars ? Math.round(doneChars / allChars * 100) : 0);
+    $('exportBar').style.width = pct + '%';
+    const txt = `第 ${lineNo}/${totalLines} 句 · ${pct}% · 预计剩余 ${estLeft(charsDone)}${note ? ' · ' + note : ''}`;
+    if (!$('exportPct').contains(pauseBtn)) { $('exportPct').textContent = ''; $('exportPct').appendChild(pauseBtn); $('exportPct').appendChild(cancelBtn); $('exportPct').appendChild(document.createTextNode(txt)); }
+    else $('exportPct').lastChild.textContent = txt;
+  };
+  const exportStart = performance.now();
+  const estLeft = () => {
+    const el = (performance.now() - exportStart) / 1000;
+    if (!doneChars) return '…';
+    return Math.max(0, Math.round(el / doneChars * (allChars - doneChars))) + '秒';
+  };
+  st.textContent = `🔴 正在渲染 ${W}×${H} 视频…（可暂停或取消）`;
+  // 逐句渲染：字幕进度与播放引擎同速，语音并行合成
+  const recdur = [];
+  idx = 0;
+  rec.start(1000);
+  const t0All = performance.now();
+  for (let i = 0; i < dialog.length; i++) {
+    if (aborted) break;
+    const item = dialog[i];
+    const total = item.text.length;
+    setProgress(doneChars, i + 1, '合成语音中');
+    // 语音（不阻塞画面渲染；有音频则按时长对齐）
+    let durMs = total / (160 * parseFloat($('rate').value)) * 60000;   // 默认打字速度
+    let audio = null;
+    audio4k = null;
+    if (ttsCfg.engine === 'api' || ttsCfg.engine === 'siliconflow') {
+      try {
+        const url = ttsCfg.url, key = ttsCfg.key;
+        if (url && key) {
+          const voice = item.role === 'him' ? ttsCfg.him : ttsCfg.her;
+          const ck = 'v4k' + item.role + '|' + item.text;
+          let objUrl;
+          if (audioCache.has(ck)) objUrl = audioCache.get(ck);
+          else {
+            const res = await fetch(url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+              body: JSON.stringify({ model: ttsCfg.model || 'tts-1', input: item.text, voice, response_format: 'mp3' })
+            });
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            objUrl = URL.createObjectURL(await res.blob());
+            audioCache.set(ck, objUrl);
+          }
+          audio = new Audio(objUrl);
+          audio4k = audio;
+          // 路由进录制流（每个 audio 元素创建一个 source）
+          if (destNode && actxRef) {
+            try {
+              const src = actxRef.createMediaElementSource(audio);
+              src.connect(destNode);          // 进录制音轨
+              src.connect(actxRef.destination); // 同时进扬声器
+            } catch (e) { /* 已绑定过则跳过 */ }
+          }
+          await new Promise(r => { audio.onloadedmetadata = r; setTimeout(r, 2000); });
+          if (isFinite(audio.duration) && audio.duration > 0) durMs = audio.duration * 1000 / parseFloat($('rate').value);
+          audio.play().catch(() => {});
+          recdur.push(audio);
+        }
+      } catch (e) { st.textContent = '⚠️ TTS 失败改用静音渲染：' + e.message; }
+    }
+    // 渲染这一句的每一帧
+    await new Promise(resolve => {
+      const s0 = performance.now();
+      let pausedAt = null;
+      function frame(now) {
+        if (aborted) { resolve(); return; }
+        if (pausedFlag) { pausedAt = now - s0; requestAnimationFrame(frame); return; }   // 冻结画面
+        const done = Math.floor((pausedAt !== null ? pausedAt : now - s0) / durMs * total);
+        drawFrame(ctx, W, H, item, Math.min(done, total), (now - t0All) / 1000);
+        if (now - s0 >= durMs) { resolve(); return; }
+        requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
+    });
+    if (aborted) break;
+    doneChars += total;
+    setProgress(doneChars, i + 1);
+    if (audio) { try { audio.pause(); } catch {} }
+    await new Promise(r => setTimeout(r, 450));   // 句间停顿
+  }
+  if (aborted) {
+    try { rec.stop(); } catch {}
+    recording = false; $('export4kBtn').disabled = false;
+    rec.ondataavailable = null; rec.onstop = null;   // 丢弃已录内容
+    $('exportProgress').style.display = 'none';
+    st.textContent = '⏹ 已取消导出。调整好设置后重新点击「导出4K高清视频」即可';
+    toast('已取消导出');
+    return;
+  }
+  drawFrame(ctx, W, H, dialog[dialog.length - 1], dialog[dialog.length - 1].text.length, 0);
+  $('exportBar').style.width = '100%';
+  $('exportPct').textContent = '100% · 正在封装文件…';
+  setTimeout(() => rec.state !== 'inactive' && rec.stop(), 800);
+};
+
+/* 用系统默认/Edge 浏览器打开当前页面的提示 */
+(function () {
+  const isFile = location.protocol === 'file:';
+  const ua = navigator.userAgent;
+  const isChromium = /Chrome|Edg/.test(ua) && !/Edg\//.test(ua) === false || /Chrome/.test(ua);
+  if (isFile && !/Chrome|Edg/.test(ua)) {
+    $('exportStatus').textContent = '💡 提示：你当前浏览器录制功能可能受限，建议右键 studio.html → 打开方式 → Microsoft Edge 或 Chrome';
+  }
+})();
+
+/* ============ init ============ */
+if (docText) $('docInfo').innerHTML = `📄 已有资料（${docText.length} 字），可重新上传覆盖`;
+if (dialog.length) $('lineCount').textContent = dialog.length;
+syncForm(); applySettings(); updateSizeEst();
+</script>
+</body>
+</html>
