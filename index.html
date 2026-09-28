@@ -410,26 +410,14 @@ label.ctl { font-size: 12px; color: #ccc; display: flex; align-items: center; ga
         </select>
       </div>
       <div class="card">
-        <div class="ttl">角色设置（角色A / 角色B，性别与名字自定义）</div>
-        <div class="row">
-          <span class="hint" style="width:60px">角色A</span>
-          <input type="text" id="himName" placeholder="名字，如 小雨" style="width:100px" title="角色A显示名">
-          <select id="himGender" style="width:76px" title="角色A性别（影响声音）">
-            <option value="male" selected>男声</option>
-            <option value="female">女声</option>
-          </select>
-          <input type="color" id="himColor" value="#4c8dff" title="角色A颜色">
-        </div>
-        <div class="row">
-          <span class="hint" style="width:60px">角色B</span>
-          <input type="text" id="herName" placeholder="名字，如 阿凯" style="width:100px" title="角色B显示名">
-          <select id="herGender" style="width:76px" title="角色B性别（影响声音）">
-            <option value="male">男声</option>
-            <option value="female" selected>女声</option>
-          </select>
-          <input type="color" id="herColor" value="#ff5c8a" title="角色B颜色">
-        </div>
-        <div class="hint">两个角色都可以是男声/女声/同名同色——比如两人都是女声，或单人自问自答。编辑器里 ♂/♀ 按钮会在「角色A/角色B」之间切换。</div>
+        <div class="ttl">角色模式</div>
+        <select id="roleMode" style="width:100%">
+          <option value="duo" selected>男女对话（A=男声，B=女声）</option>
+          <option value="solo">单人（同一声音说完全部）</option>
+        </select>
+        <div class="row" style="margin-top:10px"><span class="hint" style="flex:1">角色A颜色</span><input type="color" id="himColor" value="#4c8dff"></div>
+        <div class="row"><span class="hint" style="flex:1">角色B颜色</span><input type="color" id="herColor" value="#ff5c8a"></div>
+        <div class="hint" id="soloHint" style="display:none">单人模式：所有台词用同一个声音读，颜色A/B仍可用于区分语气段落。</div>
         <div class="row" style="margin-top:8px">
           <label class="hint" style="flex:1"><input type="checkbox" id="showBubbles" checked> 显示对话气泡</label>
         </div>
@@ -493,7 +481,7 @@ const DEFAULT_SETTINGS = {
   stageX: 50, stageY: 70, stageW: 80,   // free 模式下的位置与宽度（百分比）
   fontFamily: "'Microsoft YaHei', sans-serif", fontSize: 30, fontWeight: '700',
   himColor: '#4c8dff', herColor: '#ff5c8a', showBubbles: true,
-  himName: '小雨', herName: '阿凯', himGender: 'male', herGender: 'female'
+  roleMode: 'duo'   // duo=男女对话 | solo=单人
 };
 let settings = { ...DEFAULT_SETTINGS, ...LS.get('ds.settings', {}) };
 let dialog = LS.get('ds.dialog', []);   // [{role:'him'|'her', text}]
@@ -995,7 +983,7 @@ $('bgFile').onchange = e => {
   r.onload = () => { settings.bgImg = r.result; settings.bg = 'custom'; saveSettings(); applySettings(); toast('背景已更换'); };
   r.readAsDataURL(f);
 };
-['shade', 'stagePos', 'aspectSel', 'fontFamily', 'fontSize', 'fontWeight', 'himColor', 'herColor', 'showBubbles', 'himName', 'herName', 'himGender', 'herGender'].forEach(id => {
+['shade', 'stagePos', 'aspectSel', 'fontFamily', 'fontSize', 'fontWeight', 'himColor', 'herColor', 'showBubbles', 'roleMode'].forEach(id => {
   $(id).addEventListener('input', () => {
     if (id === 'aspectSel') settings.aspect = $(id).value;
     else settings[id] = id === 'showBubbles' ? $(id).checked :
@@ -1067,7 +1055,11 @@ async function apiSpeak(item) {
 }
 /* speak(): use API TTS if configured, else local SpeechSynthesis. Returns {audio}|null */
 /* 角色性别映射：角色A(him)/角色B(her) 的实际声音性别由设置决定 */
-function roleGender(role) { return role === 'him' ? (settings.himGender || 'male') : (settings.herGender || 'female'); }
+function roleGender(role) {
+  // solo 模式：全部台词同一性别声；duo 模式：A=男声，B=女声
+  if (settings.roleMode === 'solo') return 'male';
+  return role === 'him' ? 'male' : 'female';
+}
 
 async function speak(item) {
   // Edge 微软真人声：优先用在线 Neural 音色（免费无限量），找不到就回退本机
@@ -1126,7 +1118,18 @@ async function speak(item) {
     const mv = all.find(v => v.name === manualName);
     if (mv) { u.voice = mv; u.lang = mv.lang; speechSynthesis.speak(u); return { utter: u }; }
   }
-  if (vs.length) u.voice = vs[isMale ? 0 : Math.min(1, vs.length - 1)];
+  if (vs.length) {
+    // 稳健选声：solo/男声 → 优先第一个男声匹配；女声 → 从列表尾部往前找女声匹配
+    const FEMALE_RE = /female|xiaoxiao|xiaoyi|xiaoni|jenny|aria|michelle|nanami|elvira|sunhi|hiugaai|ting|mei|yaoyao|huihui/i;
+    const MALE_RE = /male|yunxi|yunyang|yunjian|christopher|eric|guy|keita|alvaro|injoon|wanlung|kangkang/i;
+    let vPick = null;
+    if (isMale) {
+      vPick = vs.find(v => MALE_RE.test(v.name)) || vs[0];
+    } else {
+      vPick = vs.find(v => FEMALE_RE.test(v.name)) || vs[Math.min(1, vs.length - 1)];
+    }
+    u.voice = vPick;
+  }
   speechSynthesis.speak(u);
   return { utter: u };
 }
@@ -1183,8 +1186,8 @@ function syncForm() {
   $('fontFamily').value = settings.fontFamily; $('fontSize').value = settings.fontSize;
   $('fontWeight').value = settings.fontWeight;
   $('himColor').value = settings.himColor; $('herColor').value = settings.herColor;
-  $('himName').value = settings.himName; $('herName').value = settings.herName;
-  $('himGender').value = settings.himGender; $('herGender').value = settings.herGender;
+  $('roleMode').value = settings.roleMode || 'duo';
+  $('soloHint').style.display = settings.roleMode === 'solo' ? '' : 'none';
   $('showBubbles').checked = settings.showBubbles;
   renderSwatches();
 }
@@ -1294,7 +1297,7 @@ function applySettings() {
 })();
 
 /* ============ Player engine (karaoke + TTS) ============ */
-const NAME = { him: () => settings.himName || '角色A', her: () => settings.herName || '角色B' };
+const NAME = { him: () => settings.roleMode === 'solo' ? '独白' : '角色A', her: () => settings.roleMode === 'solo' ? '独白' : '角色B' };
 let idx = 0, playing = false, paused = false;
 
 /* 音波动画：随机抖动振幅 */
@@ -1336,20 +1339,45 @@ async function playLine() {
   const item = dialog[idx];
   const span = settings.showBubbles ? addBubble(item) : null;
   paintKaraoke(item, 0);
-  const tts = await speak(item);            // API TTS: await audio start; local: fire & forget
+  const tts = await speak(item);
   const total = item.text.length;
-  let speed = 160 * parseFloat($('rate').value);   // 字/分钟 fallback (local TTS)
-  // API TTS: sync subtitle to audio duration
-  if (tts && tts.audio && isFinite(tts.audio.duration) && tts.audio.duration > 0) {
-    speed = total / tts.audio.duration * 60;
-  }
+
+  /* —— 字幕进度驱动 ——
+     模式A（最准）：本机朗读时用 utterance.onboundary 事件（浏览器每读一个词/字触发），
+                    语音读到哪，字幕就点到哪，天然同步。
+     模式B：API TTS 用音频时长均分（长句误差可忽略）。
+     模式C：无任何信号时按 160字/分钟估算，并在语音结束时立即补齐。 */
   await new Promise(resolve => {
+    let done = 0;
+    let finished = false;
+    const finish = () => { if (!finished) { finished = true; paintKaraoke(item, total); if (span) paint(span, item.text, total); resolve(); } };
+    // 倒计时保险：即使边界事件不触发，语音结束事件也会推动完成
     const t0 = performance.now();
+    let estSpeed = 160 * parseFloat($('rate').value);
+    if (tts && tts.audio && isFinite(tts.audio.duration) && tts.audio.duration > 0) {
+      estSpeed = total / tts.audio.duration * 60;   // API TTS 按音频时长均分
+    }
+    // onboundary: 本机/Edge 朗读逐字同步
+    if (tts && tts.utter && 'onboundary' in tts.utter) {
+      tts.utter.onboundary = e => {
+        if (!playing) return;
+        if (e.charIndex != null) {
+          done = Math.min(e.charIndex + (e.charLength || 1), total);
+          paintKaraoke(item, done); if (span) paint(span, item.text, done);
+        }
+      };
+      // 语音真正结束时立即补齐字幕并进入下一句
+      tts.utter.onend = () => { if (playing && !paused) finish(); };
+    }
     function tick(now) {
-      if (!playing) { resolve(); return; }
-      const done = Math.floor((now - t0) / 60000 * speed);
-      if (done >= total) { paintKaraoke(item, total); if (span) paint(span, item.text, total); resolve(); return; }
-      paintKaraoke(item, done); if (span) paint(span, item.text, done);
+      if (!playing) { finish(); return; }
+      if (paused) { requestAnimationFrame(tick); return; }
+      const fallbackDone = Math.floor((now - t0) / 60000 * estSpeed);
+      // 只在回退估算超过边界事件进度时才前进（边界事件优先）
+      if (!(tts && tts.utter && tts.utter.onboundary) || fallbackDone > done) {
+        if (fallbackDone > done) { done = fallbackDone; paintKaraoke(item, done); if (span) paint(span, item.text, done); }
+      }
+      if (done >= total) { finish(); return; }
       requestAnimationFrame(tick);
     }
     requestAnimationFrame(tick);
