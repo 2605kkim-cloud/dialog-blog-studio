@@ -431,9 +431,8 @@ label.ctl { font-size: 12px; color: #ccc; display: flex; align-items: center; ga
         <div class="ttl">TTS 引擎</div>
         <select id="ttsEngine" style="width:100%">
           <option value="local">浏览器本机（免费，音色一般）</option>
-          <option value="edge">✨ Edge 微软真人声（永久免费，推荐）</option>
-          <option value="siliconflow">硅基流动 CosyVoice（注册送额度，真人感）</option>
-          <option value="api">OpenAI 兼容 TTS API（通用自定义）</option>
+          <option value="edge">Edge 微软声（免费，较自然）</option>
+          <option value="api">OpenAI 兼容 TTS API（自定义，含本地模型服务）</option>
         </select>
         <div class="hint" id="edgeHint" style="display:none;margin-top:8px">使用微软 Edge 的在线语音（晓晓/云希等真人感音色）。播放时会自动列出系统可用音色；若 Windows 没装对应语音包，去 设置→时间和语言→语音 添加。完全免费无限量。</div>
         <div id="voicePicker" style="display:none;margin-top:8px">
@@ -925,7 +924,7 @@ $('srtBtn').onclick = async () => {
   const durs = [];
   for (const item of dialog) {
     let dur = item.text.length / (160 * parseFloat($('rate').value)) * 60;   // 秒
-    if (ttsCfg.engine === 'api' || ttsCfg.engine === 'siliconflow') {
+    if (ttsCfg.engine === 'api') {
       try {
         const url = ttsCfg.url, key = ttsCfg.key;
         if (url && key) {
@@ -997,21 +996,13 @@ function syncTtsForm() {
   $('ttsEngine').value = ttsCfg.engine;
   $('ttsUrl').value = ttsCfg.url; $('ttsKey').value = ttsCfg.key; $('ttsModel').value = ttsCfg.model;
   $('ttsHimVoice').value = ttsCfg.him; $('ttsHerVoice').value = ttsCfg.her;
-  const isApi = ttsCfg.engine === 'api' || ttsCfg.engine === 'siliconflow';
+  const isApi = ttsCfg.engine === 'api';
   $('ttsApiRow').style.display = isApi ? '' : 'none';
   $('edgeHint').style.display = ttsCfg.engine === 'edge' ? '' : 'none';
 }
 $('ttsEngine').onchange = () => { ttsCfg.engine = $('ttsEngine').value; applyTtsPreset(); LS.set('ds.tts', ttsCfg); syncTtsForm(); renderVoicePicker(); };
-/* 硅基流动预设：送额度、CosyVoice 真人感 */
 const TTS_PRESETS = {
-  siliconflow: {
-    url: 'https://api.siliconflow.cn/v1/audio/speech',
-    model: 'FunAudioLLM/CosyVoice2-0.5B',
-    him: 'FunAudioLLM/CosyVoice2-0.5B:alex',
-    her: 'FunAudioLLM/CosyVoice2-0.5B:anna',
-    hint: '✅ 已填入硅基流动免费预设，只需注册 siliconflow.cn 领取额度并填入 API Key'
-  },
-  api: { hint: '填入任意兼容 OpenAI TTS 格式的服务地址' }
+  api: { hint: '填入任意兼容 OpenAI TTS 格式的服务地址（云端 API 或本地模型服务）' }
 };
 function applyTtsPreset() {
   const p = TTS_PRESETS[ttsCfg.engine];
@@ -1096,7 +1087,7 @@ async function speak(item) {
     }
     // 没有 Neural 音色 → 落回本机通用逻辑
   }
-  if (ttsCfg.engine === 'api' || ttsCfg.engine === 'siliconflow') {
+  if (ttsCfg.engine === 'api') {
     try { const a = await apiSpeak(item); return { audio: a }; }
     catch (e) { toast('TTS API 失败，回退本机朗读：' + e.message); }
   }
@@ -1747,7 +1738,7 @@ $('export4kBtn').onclick = async () => {
     let durMs = total / (160 * parseFloat($('rate').value)) * 60000;   // 默认打字速度
     let audio = null;
     audio4k = null;
-    if (ttsCfg.engine === 'api' || ttsCfg.engine === 'siliconflow') {
+    if (ttsCfg.engine === 'api') {
       try {
         const url = ttsCfg.url, key = ttsCfg.key;
         if (url && key) {
