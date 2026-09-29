@@ -1053,6 +1053,11 @@ function roleGender(role) {
 }
 
 async function speak(item) {
+  // API TTS 优先判断（必须在任何 speechSynthesis 逻辑之前）
+  if (ttsCfg.engine === 'api') {
+    try { const a = await apiSpeak(item); return { audio: a }; }
+    catch (e) { toast('TTS API 失败，回退本机朗读：' + e.message); }
+  }
   // Edge 微软真人声：优先用在线 Neural 音色（免费无限量），找不到就回退本机
   if (ttsCfg.engine === 'edge' && 'speechSynthesis' in window) {
     const vs = speechSynthesis.getVoices();
@@ -1086,10 +1091,6 @@ async function speak(item) {
       return { utter: u };
     }
     // 没有 Neural 音色 → 落回本机通用逻辑
-  }
-  if (ttsCfg.engine === 'api') {
-    try { const a = await apiSpeak(item); return { audio: a }; }
-    catch (e) { toast('TTS API 失败，回退本机朗读：' + e.message); }
   }
   if (!('speechSynthesis' in window)) return null;
   const u = new SpeechSynthesisUtterance(item.text);
