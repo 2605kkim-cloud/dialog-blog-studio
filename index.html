@@ -1390,6 +1390,13 @@ async function playLine() {
 async function start() {
   if (playing) return;
   if (!dialog.length) { toast('请先在 ② 编辑对话'); goTab(2); return; }
+  // 关键：播放前从表单强制重读 TTS 配置（防止 autofill/未触发 onchange 导致引擎不生效）
+  ttsCfg.engine = $('ttsEngine').value;
+  ttsCfg.url = $('ttsUrl').value.trim(); ttsCfg.key = $('ttsKey').value.trim();
+  ttsCfg.model = $('ttsModel').value.trim(); ttsCfg.him = $('ttsHimVoice').value.trim(); ttsCfg.her = $('ttsHerVoice').value.trim();
+  LS.set('ds.tts', ttsCfg);
+  console.log('[TTS] 引擎=', ttsCfg.engine, '| URL=', ttsCfg.url || '(空)');
+  if (ttsCfg.engine === 'api') toast('🔊 本次使用 API 语音: ' + (ttsCfg.url || '⚠️ 未填地址'));
   if ('speechSynthesis' in window) speechSynthesis.getVoices();
   if (idx >= dialog.length) { idx = 0; $('chat').innerHTML = ''; }
   playing = true; paused = false;
