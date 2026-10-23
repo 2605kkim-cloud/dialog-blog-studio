@@ -7,16 +7,19 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 <style>
 :root {
-  /* 暗色主题（默认）*/
-  --bg: #0d0f14; --panel: #161923; --panel2: #1d2130;
-  --border: #2a3046; --text: #eceef4; --muted: #8b91a5;
-  --him: #4c8dff; --her: #ff5c8a; --accent: #4c8dff;
-  --accent-soft: rgba(76,141,255,.08);
-  --shadow: 0 1px 3px rgba(0,0,0,.4), 0 4px 16px rgba(0,0,0,.25);
-  --input-bg: #1d2130;
-  --tab-idle: #8b91a5;
-  --danger: #ff7b7b; --ok: #7be08a;
-  --scrollbar: #333a52;
+  /* 暗色主题（默认）：曜石黑 × 绯红，高级感 */
+  --bg: #0a0b0e; --panel: #121318; --panel2: #1a1b23;
+  --border: #2a2b35; --text: #eceef4; --muted: #8a8fa3;
+  --him: #4c8dff; --her: #ff5c8a;
+  --accent: #e63b4c;
+  --accent-hover: #ff4d5e;
+  --accent-soft: rgba(230,59,76,.10);
+  --shadow: 0 1px 3px rgba(0,0,0,.5), 0 6px 20px rgba(0,0,0,.35);
+  --shadow-accent: 0 2px 12px rgba(230,59,76,.28);
+  --input-bg: #1a1b23;
+  --tab-idle: #777d92;
+  --danger: #ff6b6b; --ok: #6fd88a;
+  --scrollbar: #2e303c;
   color-scheme: dark;
 }
 /* 亮色主题：高级灰白，对比柔和 */
@@ -25,6 +28,7 @@ html[data-theme='light'] {
   --border: #dfe3ec; --text: #1c2030; --muted: #6b7186;
   --accent: #3a6fe0; --accent-soft: rgba(58,111,224,.07);
   --shadow: 0 1px 2px rgba(20,30,60,.06), 0 4px 14px rgba(20,30,60,.07);
+  --shadow-accent: 0 2px 10px rgba(58,111,224,.18);
   --input-bg: #f6f7fa;
   --tab-idle: #8a90a3;
   --danger: #d9534f; --ok: #3fa356;
@@ -47,7 +51,7 @@ h1 .titleActions { float: right; display: flex; gap: 8px; align-items: center; }
   border-radius: 20px; padding: 6px 14px; font-size: 13px; cursor: pointer;
   transition: all .2s ease; display: inline-flex; align-items: center; gap: 6px;
 }
-#themeBtn:hover { border-color: var(--accent); color: var(--accent); }
+#themeBtn:hover { border-color: var(--accent); color: var(--accent); box-shadow: var(--shadow-accent); }
 
 /* Cards elevate in light theme */
 .panel, .card { box-shadow: var(--shadow); }
@@ -63,7 +67,7 @@ h1 .titleActions { float: right; display: flex; gap: 8px; align-items: center; }
   transition: all .15s ease;
 }
 .tabs button:hover { color: var(--text); }
-.tabs button.on { background: var(--panel2); color: var(--text); border-color: var(--accent); font-weight: 600; }
+.tabs button.on { background: var(--panel2); color: var(--text); border-color: var(--accent); font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent); }
 
 .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
 .panel h2 { font-size: 15px; margin-bottom: 12px; color: var(--text); }
@@ -73,8 +77,11 @@ h1 .titleActions { float: right; display: flex; gap: 8px; align-items: center; }
 button.btn {
   background: var(--accent); color: #fff; border: 0; padding: 10px 20px;
   border-radius: 8px; font-size: 14px; cursor: pointer;
+  transition: background .15s ease, box-shadow .15s ease, transform .1s ease;
 }
-button.btn:disabled { opacity: .4; cursor: not-allowed; }
+button.btn:hover { background: var(--accent-hover); box-shadow: var(--shadow-accent); }
+button.btn:active { transform: translateY(1px); }
+button.btn:disabled { opacity: .4; cursor: not-allowed; box-shadow: none; }
 button.ghost {
   background: transparent; color: var(--text); border: 1px solid var(--border);
   padding: 8px 14px; border-radius: 8px; font-size: 13px; cursor: pointer;
@@ -87,6 +94,7 @@ input[type=text], input[type=password], select, textarea {
 }
 input[type=text]:focus, input[type=password]:focus, select:focus, textarea:focus {
   outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 textarea { width: 100%; resize: vertical; }
 input[type=range] { accent-color: var(--accent); }
