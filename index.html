@@ -1030,7 +1030,8 @@ async function apiSpeak(item) {
   const voice = item.role === 'him' ? ttsCfg.him : ttsCfg.her;
   // API 音色也支持性别覆写：若某音色名含性别后缀规则则尊重用户手填；否则原样使用
   const ck = item.role + '|' + item.text;
-  if (audioCache.has(ck)) { const a = new Audio(audioCache.get(ck)); await a.play(); return a; }
+  const rate = parseFloat($('rate').value);
+  if (audioCache.has(ck)) { const a = new Audio(audioCache.get(ck)); a.playbackRate = rate; await a.play(); return a; }
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
@@ -1040,7 +1041,7 @@ async function apiSpeak(item) {
   const blob = await res.blob();
   audioCache.set(ck, URL.createObjectURL(blob));
   const a = new Audio(audioCache.get(ck));
-  a.playbackRate = parseFloat($('rate').value);
+  a.playbackRate = rate;
   await a.play();
   return a;
 }
@@ -1335,44 +1336,68 @@ async function playLine() {
   const total = item.text.length;
 
   /* —— 字幕进度驱动 ——
-     模式A（最准）：本机朗读时用 utterance.onboundary 事件（浏览器每读一个词/字触发），
-                    语音读到哪，字幕就点到哪，天然同步。
-     模式B：API TTS 用音频时长均分（长句误差可忽略）。
-     模式C：无任何信号时按 160字/分钟估算，并在语音结束时立即补齐。 */
+     模式A（最准）：本机/Edge 朗读用 utterance.onboundary 逐字事件，语音读到哪字幕点到哪。
+     模式B：API TTS 用 audio.currentTime 实时映射字幕进度（比均分准，且跟随 playbackRate）。
+     模式C：无任何信号时按估算速度推进，语音结束时立即补齐。
+     通用规则：进度只增不减；语音结束后先补齐再进下一句（保底部不跳句）。 */
   await new Promise(resolve => {
     let done = 0;
     let finished = false;
+    const advance = w => { if (w > done) { done = Math.min(w, total); paintKaraoke(item, done); if (span) paint(span, item.text, done); } };
     const finish = () => { if (!finished) { finished = true; paintKaraoke(item, total); if (span) paint(span, item.text, total); resolve(); } };
-    // 倒计时保险：即使边界事件不触发，语音结束事件也会推动完成
     const t0 = performance.now();
     let estSpeed = 160 * parseFloat($('rate').value);
     if (tts && tts.audio && isFinite(tts.audio.duration) && tts.audio.duration > 0) {
-      estSpeed = total / tts.audio.duration * 60;   // API TTS 按音频时长均分
+      estSpeed = total / tts.audio.duration * 60;
     }
-    // onboundary: 本机/Edge 朗读逐字同步
-    if (tts && tts.utter && 'onboundary' in tts.utter) {
-      tts.utter.onboundary = e => {
-        if (!playing) return;
-        if (e.charIndex != null) {
-          done = Math.min(e.charIndex + (e.charLength || 1), total);
-          paintKaraoke(item, done); if (span) paint(span, item.text, done);
-        }
-      };
-      // 语音真正结束时立即补齐字幕并进入下一句
-      tts.utter.onend = () => { if (playing && !paused) finish(); };
-    }
-    function tick(now) {
-      if (!playing) { finish(); return; }
-      if (paused) { requestAnimationFrame(tick); return; }
-      const fallbackDone = Math.floor((now - t0) / 60000 * estSpeed);
-      // 只在回退估算超过边界事件进度时才前进（边界事件优先）
-      if (!(tts && tts.utter && tts.utter.onboundary) || fallbackDone > done) {
-        if (fallbackDone > done) { done = fallbackDone; paintKaraoke(item, done); if (span) paint(span, item.text, done); }
+    // —— 模式A：onboundary 逐字同步（本机/Edge）——
+    let boundarySeen = false;
+    if (tts && tts.utter) {
+      const u = tts.utter;
+      if ('onboundary' in u) {
+        u.onboundary = e => {
+          if (!playing || paused) return;
+          if (e.charIndex != null) {
+            boundarySeen = true;
+            advance(e.charIndex + (e.charLength || 1));
+          }
+        };
       }
-      if (done >= total) { finish(); return; }
+      // 语音真正结束：立即补齐并结束本句（无论 boundary 是否触发过）
+      u.onend = () => { if (playing && !paused) finish(); };
+      u.onerror = () => { if (playing && !paused) finish(); };
+    }
+    // —— 模式B：API 音频用 currentTime 实时驱动 ——
+    let audioTick = null;
+    if (tts && tts.audio) {
+      audioTick = setInterval(() => {
+        if (!playing || paused) return;
+        const a = tts.audio;
+        if (isFinite(a.duration) && a.duration > 0) {
+          // 音频播放进度 → 字符进度（playbackRate 已反映在 currentTime 推进速度上）
+          advance(Math.floor(a.currentTime / a.duration * total));
+        }
+      }, 80);
+    }
+    // —— 模式C：估算兜底（仅当无 boundary 且无音频时长信号时才推进）——
+    function tick(now) {
+      if (!playing) { if (audioTick) clearInterval(audioTick); finish(); return; }
+      if (paused) { requestAnimationFrame(tick); return; }
+      const hasSignal = boundarySeen || (tts && tts.audio && isFinite(tts.audio.duration) && tts.audio.duration > 0);
+      if (!hasSignal) {
+        const fallbackDone = Math.floor((now - t0) / 60000 * estSpeed);
+        advance(fallbackDone);
+      }
       requestAnimationFrame(tick);
     }
     requestAnimationFrame(tick);
+    // —— 双保险：本句有音频时，音频播完也收尾（防 onend 丢失）——
+    if (tts && tts.audio) {
+      tts.audio.onended = () => { if (audioTick) clearInterval(audioTick); if (playing && !paused) finish(); };
+    }
+    // 无信号时的超时兜底：估算时长 + 8 秒上限，避免异常时卡死单句
+    const maxWait = (total / estSpeed * 60000 + 8000);
+    setTimeout(() => { if (!finished && playing && !paused) finish(); }, maxWait);
   });
   // if API audio still playing, wait it out (audio longer than subtitle)
   if (tts && tts.audio) {
