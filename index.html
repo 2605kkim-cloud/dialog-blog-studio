@@ -1367,7 +1367,7 @@ async function playLine() {
           }
         };
       }
-      // 语音结束：记录实测时长用于校准，并立即补齐结束本句
+      // 语音结束：记录实测时长用于校准，并快速补齐结束本句
       u.onend = () => {
         if (!playing) return;
         try {
@@ -1378,7 +1378,19 @@ async function playLine() {
             LS.set('ds.speechClock', speechClock);
           }
         } catch (e) {}
-        if (!paused) finish();
+        if (!paused) {
+          // 补齐不是瞬间跳满：120ms 快速扫过剩余字符，视觉上像"追上语音"而非戛然而止
+          const from = done;
+          if (total - from > 2) {
+            const t1 = performance.now();
+            const sweep = () => {
+              const k = Math.min((performance.now() - t1) / 120, 1);
+              advance(Math.floor(from + (total - from) * k));
+              if (k < 1) requestAnimationFrame(sweep); else finish();
+            };
+            requestAnimationFrame(sweep);
+          } else finish();
+        }
       };
       u.onerror = () => { if (playing) finish(); };
     }
@@ -1405,6 +1417,15 @@ async function playLine() {
       const idle = !('speechSynthesis' in window) || !speechSynthesis.speaking && !speechSynthesis.pending;
       if (idle) finish();
     }, estMs + 3000);
+    // 引擎空闲提前收尾：每 200ms 查一次，语音已停且字幕已过 85% 就直接收尾
+    // （比等固定 watchdog 更快衔接下一句，消除句间"突然安静很久"的感觉）
+    const idleCheck = setInterval(() => {
+      if (finished || !playing || paused) { clearInterval(idleCheck); return; }
+      if (tts && tts.audio) return;   // API 音频有自己的 onended
+      if (!('speechSynthesis' in window)) return;
+      const idle = !speechSynthesis.speaking && !speechSynthesis.pending;
+      if (idle && done >= total * 0.85) { clearInterval(idleCheck); finish(); }
+    }, 200);
     function tick(now) {
       if (!playing) { if (audioTick) clearInterval(audioTick); finish(); return; }
       if (paused) { requestAnimationFrame(tick); return; }
@@ -1430,8 +1451,24 @@ async function playLine() {
   }
   if (!playing) return;
   idx++;
-  await new Promise(r => setTimeout(r, 450));
+  // 句间停顿：短句后稍长、长句后稍短，模拟真人对话换气（150–300ms）
+  const gap = total > 30 ? 150 : 300;
+  // 预取下一句 API 音频（播放本句停顿时把网络请求做掉，下一句零等待）
+  if (ttsCfg.engine === 'api' && idx < dialog.length) prefetchAudio(dialog[idx]);
+  await new Promise(r => setTimeout(r, gap));
   if (playing) playLine();
+}
+/* 预取下一句 TTS 音频进缓存（失败静默，播放时自然回退到即时请求） */
+function prefetchAudio(item) {
+  const ck = item.role + '|' + item.text;
+  if (audioCache.has(ck) || !ttsCfg.url || !ttsCfg.key) return;
+  fetch(ttsCfg.url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + ttsCfg.key },
+    body: JSON.stringify({ model: ttsCfg.model || 'tts-1', input: item.text, voice: item.role === 'him' ? ttsCfg.him : ttsCfg.her, response_format: 'mp3' })
+  }).then(async res => {
+    if (res.ok) audioCache.set(ck, URL.createObjectURL(await res.blob()));
+  }).catch(() => {});
 }
 /* 语音语速在线校准器：记录每句实测「字/分钟」的滑动平均 */
 const speechClock = LS.get('ds.speechClock', { rate: 0, n: 0 });
