@@ -1813,6 +1813,17 @@ function wrapText(c, text, maxW) {
   if (line) lines.push(line);
   return lines;
 }
+/* roundRect 兼容垫片（老浏览器无 ctx.roundRect） */
+function roundRectPath(c, x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  c.beginPath();
+  c.moveTo(x + r, y);
+  c.arcTo(x + w, y, x + w, y + h, r);
+  c.arcTo(x + w, y + h, x, y + h, r);
+  c.arcTo(x, y + h, x, y, r);
+  c.arcTo(x, y, x + w, y, r);
+  c.closePath();
+}
 function drawFrame(ctx, W, H, item, doneW, t) {
   // 背景
   ctx.clearRect(0, 0, W, H);
@@ -1863,6 +1874,38 @@ function drawFrame(ctx, W, H, item, doneW, t) {
     }
   });
   ctx.globalAlpha = 1;
+  // 对话气泡（与播放器一致：显示最近的几句，随对话推进）——仅导出开启时绘制
+  if (settings.exportBubbles !== false && settings.showBubbles) {
+    const upto = dialog.indexOf(item);
+    const recent = dialog.slice(Math.max(0, upto - 5), upto + 1);   // 最近 6 句
+    const bFs = Math.round(fs * 0.52);
+    ctx.font = `400 ${bFs}px ${settings.fontFamily}`;
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    let by = H * 0.06;
+    const bMaxW = W * 0.62;
+    for (const b of recent) {
+      const isCur = b === item;
+      const bc = b.role === 'him' ? settings.himColor : settings.herColor;
+      const bLines = wrapText(ctx, b.text, bMaxW - bFs * 2.4);
+      const bH = bLines.length * bFs * 1.5 + bFs * 0.8;
+      const bW = Math.min(bMaxW, Math.max(...bLines.map(l => ctx.measureText(l).width)) + bFs * 2.4);
+      const bx = b.role === 'him' ? W * 0.05 : W * 0.95 - bW;
+      // 气泡底
+      ctx.globalAlpha = isCur ? 0.78 : 0.45;
+      ctx.fillStyle = '#141620';
+      roundRectPath(ctx, bx, by, bW, bH, bFs * 0.6);
+      ctx.fill();
+      ctx.globalAlpha = isCur ? 1 : 0.6;
+      ctx.fillStyle = bc;
+      ctx.fillRect(b.role === 'him' ? bx : bx + bW - bFs * 0.28, by, bFs * 0.28, bH);   // 角色色边
+      ctx.fillStyle = '#ffffff';
+      let ty = by + bFs * 0.4;
+      for (const ln of bLines) { ctx.fillText(ln, bx + bFs * 1.2, ty); ty += bFs * 1.5; }
+      by += bH + bFs * 0.7;
+      if (by > H * 0.42) break;   // 气泡区不越过字幕区
+    }
+    ctx.globalAlpha = 1;
+  }
 }
 
 $('export4kBtn').onclick = async () => {
@@ -1870,6 +1913,18 @@ $('export4kBtn').onclick = async () => {
   if (!dialog.length) { toast('请先在 ② 编辑对话'); goTab(2); return; }
   const st = $('exportStatus');
   if (typeof MediaRecorder === 'undefined') { st.textContent = '❌ 浏览器缺少 MediaRecorder，请换 Chrome/Edge'; return; }
+  // —— 硬性前置检查：本机/Edge 引擎的语音无法录进视频（浏览器安全限制）——
+  // 导出前必须确认，否则用户等几十分钟才得到一个无声视频
+  syncTtsFromForm();
+  if (ttsCfg.engine !== 'api') {
+    const okGo = confirm(
+      '⚠️ 当前语音引擎是「本机/Edge」，其声音无法录入视频（浏览器安全限制），导出将是无声视频！\n\n' +
+      '要导出带声音的视频，请先在「③ 样式设置 → 语音音色」里选择「OpenAI 兼容 TTS API」并填入服务地址和 Key。\n\n' +
+      '仍要继续导出无声视频吗？'
+    );
+    if (!okGo) { goTab(3); return; }
+    st.textContent = 'ℹ️ 已确认无声导出（本机语音无法录制）';
+  }
   const [W, H] = exportRes();
   const qLabel = $('qualitySel').value;
   const cv = document.createElement('canvas');
@@ -1973,6 +2028,20 @@ $('export4kBtn').onclick = async () => {
     return Math.max(0, Math.round(el / doneChars * (allChars - doneChars))) + '秒';
   };
   st.textContent = `🔴 正在渲染 ${W}×${H} 视频…（可暂停或取消）`;
+  /* —— 后台渲染保护：rAF 在标签页切走/手机锁屏时完全不触发（0fps），
+     导致画面冻结在第一帧。改用 setInterval(33ms) 驱动：
+     前台 ≈30fps；后台被节流到 1fps，但画面仍会推进而不是冻结。
+     同时监听 visibilitychange，切回前台立即恢复满帧。 */
+  let bgThrottled = false;
+  const visHandler = () => {
+    if (!document.hidden && bgThrottled) {
+      bgThrottled = false;
+      toast('已回到前台，恢复满帧渲染');
+    } else if (document.hidden) {
+      bgThrottled = true;
+    }
+  };
+  document.addEventListener('visibilitychange', visHandler);
   // 逐句渲染：字幕进度与播放引擎同速，语音并行合成
   const recdur = [];
   idx = 0;
@@ -2022,19 +2091,29 @@ $('export4kBtn').onclick = async () => {
         }
       } catch (e) { st.textContent = '⚠️ TTS 失败改用静音渲染：' + e.message; }
     }
-    // 渲染这一句的每一帧
+    // 渲染这一句的每一帧：setInterval 驱动（后台不再冻结），
+    // 有音频时进度对齐 audio.currentTime（和语音严格同步，且不受节流影响）
     await new Promise(resolve => {
-      const s0 = performance.now();
-      let pausedAt = null;
-      function frame(now) {
-        if (aborted) { resolve(); return; }
-        if (pausedFlag) { pausedAt = now - s0; requestAnimationFrame(frame); return; }   // 冻结画面
-        const done = Math.floor((pausedAt !== null ? pausedAt : now - s0) / durMs * total);
-        drawFrame(ctx, W, H, item, Math.min(done, total), (now - t0All) / 1000);
-        if (now - s0 >= durMs) { resolve(); return; }
-        requestAnimationFrame(frame);
-      }
-      requestAnimationFrame(frame);
+      let elapsedBase = 0;          // 已累计的播放时间（暂停时不增长）
+      let lastTick = performance.now();
+      const frame = () => {
+        const now = performance.now();
+        const dt = now - lastTick;
+        lastTick = now;
+        if (aborted) { clearInterval(iv); resolve(); return; }
+        if (pausedFlag) return;   // 暂停：elapsed 不增长，画面冻结在原地
+        elapsedBase += dt;        // 累计真实播放时长（暂停时间被自动排除）
+        let done;
+        if (audio && isFinite(audio.duration) && audio.duration > 0 && !audio.paused) {
+          // 音频进度优先（实时跟语音走；audio.currentTime 已含 playbackRate 影响）
+          done = Math.floor(audio.currentTime / audio.duration * total);
+        } else {
+          done = Math.floor(elapsedBase / durMs * total);
+        }
+        drawFrame(ctx, W, H, item, Math.min(done, total), (performance.now() - t0All) / 1000);
+        if (elapsedBase >= durMs) { clearInterval(iv); resolve(); return; }
+      };
+      const iv = setInterval(frame, 33);
     });
     if (aborted) break;
     doneChars += total;
@@ -2042,6 +2121,7 @@ $('export4kBtn').onclick = async () => {
     if (audio) { try { audio.pause(); } catch {} }
     await new Promise(r => setTimeout(r, 450));   // 句间停顿
   }
+  document.removeEventListener('visibilitychange', visHandler);
   if (aborted) {
     try { rec.stop(); } catch {}
     recording = false; $('export4kBtn').disabled = false;
