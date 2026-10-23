@@ -7,23 +7,63 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 <style>
 :root {
-  --bg: #0f1117; --panel: #181b24; --panel2: #1e2230;
-  --border: #2b3044; --text: #e8eaf0; --muted: #8a90a3;
+  /* 暗色主题（默认）*/
+  --bg: #0d0f14; --panel: #161923; --panel2: #1d2130;
+  --border: #2a3046; --text: #eceef4; --muted: #8b91a5;
   --him: #4c8dff; --her: #ff5c8a; --accent: #4c8dff;
+  --accent-soft: rgba(76,141,255,.08);
+  --shadow: 0 1px 3px rgba(0,0,0,.4), 0 4px 16px rgba(0,0,0,.25);
+  --input-bg: #1d2130;
+  --tab-idle: #8b91a5;
+  --danger: #ff7b7b; --ok: #7be08a;
+  --scrollbar: #333a52;
+  color-scheme: dark;
+}
+/* 亮色主题：高级灰白，对比柔和 */
+html[data-theme='light'] {
+  --bg: #f4f5f8; --panel: #ffffff; --panel2: #eef0f5;
+  --border: #dfe3ec; --text: #1c2030; --muted: #6b7186;
+  --accent: #3a6fe0; --accent-soft: rgba(58,111,224,.07);
+  --shadow: 0 1px 2px rgba(20,30,60,.06), 0 4px 14px rgba(20,30,60,.07);
+  --input-bg: #f6f7fa;
+  --tab-idle: #8a90a3;
+  --danger: #d9534f; --ok: #3fa356;
+  --scrollbar: #d4d9e4;
+  color-scheme: light;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { background: var(--bg); color: var(--text); font-family: 'Microsoft YaHei', system-ui, sans-serif; min-height: 100vh; }
+body {
+  background: var(--bg); color: var(--text); font-family: 'Microsoft YaHei', system-ui, sans-serif;
+  min-height: 100vh; transition: background .25s ease, color .25s ease;
+}
 .app { max-width: 980px; margin: 0 auto; padding: 20px 16px 60px; }
-h1 { font-size: 22px; margin-bottom: 4px; }
+h1 { font-size: 22px; margin-bottom: 4px; letter-spacing: .3px; }
+h1 .titleActions { float: right; display: flex; gap: 8px; align-items: center; }
 .sub { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+
+/* 主题切换按钮 */
+#themeBtn {
+  background: var(--panel); color: var(--text); border: 1px solid var(--border);
+  border-radius: 20px; padding: 6px 14px; font-size: 13px; cursor: pointer;
+  transition: all .2s ease; display: inline-flex; align-items: center; gap: 6px;
+}
+#themeBtn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* Cards elevate in light theme */
+.panel, .card { box-shadow: var(--shadow); }
+.card {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px;
+}
 
 /* Tabs */
 .tabs { display: flex; gap: 6px; margin-bottom: 16px; }
 .tabs button {
-  flex: 1; padding: 12px; background: var(--panel); color: var(--muted);
+  flex: 1; padding: 12px; background: var(--panel); color: var(--tab-idle);
   border: 1px solid var(--border); border-radius: 10px; font-size: 14px; cursor: pointer;
+  transition: all .15s ease;
 }
-.tabs button.on { background: var(--panel2); color: var(--text); border-color: var(--accent); }
+.tabs button:hover { color: var(--text); }
+.tabs button.on { background: var(--panel2); color: var(--text); border-color: var(--accent); font-weight: 600; }
 
 .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
 .panel h2 { font-size: 15px; margin-bottom: 12px; color: var(--text); }
@@ -38,21 +78,26 @@ button.btn:disabled { opacity: .4; cursor: not-allowed; }
 button.ghost {
   background: transparent; color: var(--text); border: 1px solid var(--border);
   padding: 8px 14px; border-radius: 8px; font-size: 13px; cursor: pointer;
+  transition: border-color .15s ease;
 }
+button.ghost:hover { border-color: var(--accent); }
 input[type=text], input[type=password], select, textarea {
-  background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+  background: var(--input-bg); color: var(--text); border: 1px solid var(--border);
   border-radius: 8px; padding: 9px 12px; font-size: 14px; font-family: inherit;
+}
+input[type=text]:focus, input[type=password]:focus, select:focus, textarea:focus {
+  outline: none; border-color: var(--accent);
 }
 textarea { width: 100%; resize: vertical; }
 input[type=range] { accent-color: var(--accent); }
-input[type=color] { width: 42px; height: 32px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel2); padding: 2px; cursor: pointer; }
+input[type=color] { width: 42px; height: 32px; border: 1px solid var(--border); border-radius: 6px; background: var(--input-bg); padding: 2px; cursor: pointer; }
 
 /* Drop zone */
 #dropZone {
   border: 2px dashed var(--border); border-radius: 12px; padding: 32px;
   text-align: center; color: var(--muted); cursor: pointer; transition: .2s;
 }
-#dropZone.over { border-color: var(--accent); background: rgba(76,141,255,.06); }
+#dropZone.over { border-color: var(--accent); background: var(--accent-soft); }
 #docInfo { font-size: 13px; color: var(--text); margin-top: 10px; }
 
 /* Dialog editor */
@@ -123,7 +168,7 @@ input[type=color] { width: 42px; height: 32px; border: 1px solid var(--border); 
 .rs-handle.left { left: -6px; }
 .rs-handle.right { right: -6px; }
 .rs-handle:hover { background: linear-gradient(90deg, transparent, rgba(255,255,255,.25), transparent); }
-#avatar { font-size: 13px; margin-bottom: 10px; color: #ddd; }
+#avatar { font-size: 13px; margin-bottom: 10px; color: rgba(255,255,255,.87); }
 #avatar .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
 #avatar.himActive .dot { background: var(--him); }
 #avatar.herActive .dot { background: var(--her); }
@@ -145,31 +190,35 @@ input[type=color] { width: 42px; height: 32px; border: 1px solid var(--border); 
   padding: 8px 18px; border-radius: 999px; font-size: 13px; cursor: pointer;
 }
 #playerControls button:disabled { opacity: .35; cursor: not-allowed; }
-label.ctl { font-size: 12px; color: #ccc; display: flex; align-items: center; gap: 6px; }
+label.ctl { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
 
 /* settings grid */
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
-.card { background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+/* .card 主体样式在顶部主题区统一定义（panel 底 + 阴影） */
 .card .ttl { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
 .swatches { display: flex; gap: 8px; flex-wrap: wrap; }
 .swatch { width: 52px; height: 34px; border-radius: 7px; border: 2px solid transparent; cursor: pointer; }
-.swatch.on { border-color: #fff; }
+.swatch.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
 .presetCard { flex: 0 0 120px; height: 70px; border-radius: 8px; border: 2px solid transparent; cursor: pointer; background-size: cover; background-position: center; }
 .presetCard.on { border-color: var(--accent); }
 
 #genStatus { font-size: 13px; margin-top: 8px; min-height: 18px; }
-#genStatus.err { color: #ff7b7b; }
-#genStatus.ok { color: #7be08a; }
+#genStatus.err { color: var(--danger); }
+#genStatus.ok { color: var(--ok); }
 .toast {
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
-  background: #2a3048; border: 1px solid var(--border); padding: 10px 20px;
-  border-radius: 10px; font-size: 13px; display: none; z-index: 99;
+  background: var(--panel); color: var(--text); border: 1px solid var(--border);
+  padding: 10px 20px; border-radius: 10px; font-size: 13px; display: none; z-index: 99;
+  box-shadow: var(--shadow);
 }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
 </style>
 </head>
 <body>
 <div class="app">
-  <h1>🎙️ Dialog Blog Studio</h1>
+  <h1>🎙️ Dialog Blog Studio <span class="titleActions"><button id="themeBtn" title="切换明暗主题">🌙 暗色</button></span></h1>
   <div class="sub">上传资料 → AI 生成双人对话博客 → 卡拉OK字幕播放（全部数据存本地浏览器）</div>
 
   <div class="tabs">
@@ -488,6 +537,20 @@ let docText = LS.get('ds.doc', '');
 
 const $ = id => document.getElementById(id);
 function toast(msg) { const t = $('toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', 2200); }
+
+/* ===== 主题（明/暗）===== */
+const themeCfg = { mode: LS.get('ds.theme', 'dark') };   // 'dark' | 'light'
+function applyTheme(mode) {
+  themeCfg.mode = mode;
+  document.documentElement.setAttribute('data-theme', mode);
+  const btn = $('themeBtn');
+  if (btn) btn.textContent = mode === 'dark' ? '🌙 暗色' : '☀️ 亮色';
+  LS.set('ds.theme', mode);
+}
+$('themeBtn').onclick = () => {
+  applyTheme(themeCfg.mode === 'dark' ? 'light' : 'dark');
+};
+applyTheme(themeCfg.mode);
 
 /* ============ Tabs ============ */
 function goTab(n) {
