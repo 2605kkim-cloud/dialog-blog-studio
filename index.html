@@ -983,12 +983,22 @@ $('bgFile').onchange = e => {
   r.readAsDataURL(f);
 };
 ['shade', 'stagePos', 'aspectSel', 'fontFamily', 'fontSize', 'fontWeight', 'himColor', 'herColor', 'showBubbles', 'roleMode'].forEach(id => {
-  $(id).addEventListener('input', () => {
+  // change 与 input 都监听：select 在部分浏览器只发 change 不发 input
+  const handler = () => {
     if (id === 'aspectSel') settings.aspect = $(id).value;
     else settings[id] = id === 'showBubbles' ? $(id).checked :
       (['shade', 'fontSize'].includes(id) ? parseInt($(id).value) : $(id).value);
     saveSettings(); applySettings();
-  });
+    if (id === 'roleMode') {
+      $('soloHint').style.display = settings.roleMode === 'solo' ? '' : 'none';
+      const playingNow = playing && idx < dialog.length;
+      toast(settings.roleMode === 'solo'
+        ? '🔊 已切换单人模式：' + (playingNow ? '下一句起生效' : '点播放生效')
+        : '🔊 已切换男女对话模式：' + (playingNow ? '下一句起生效' : '点播放生效'));
+    }
+  };
+  $(id).addEventListener('input', handler);
+  $(id).addEventListener('change', handler);
 });
 /* TTS settings persistence */
 const ttsCfg = LS.get('ds.tts', { engine: 'local', url: '', key: '', model: '', him: 'male-qn-qingse', her: 'female-shaonv', himVoice: 'auto', herVoice: 'auto' });
@@ -1143,7 +1153,9 @@ function renderVoicePicker() {
     sel.innerHTML = '';
     const vs = speechSynthesis.getVoices();
     const auto = document.createElement('option');
-    auto.value = 'auto'; auto.textContent = `自动（${vs.length} 个可用音色）`;
+    auto.value = 'auto'; auto.textContent = vs.length
+      ? `自动（${vs.length} 个可用音色）`
+      : '自动（语音包加载中…）';
     sel.appendChild(auto);
     vs.sort((a, b) => a.lang.localeCompare(b.lang)).forEach(v => {
       const o = document.createElement('option');
@@ -1156,26 +1168,68 @@ function renderVoicePicker() {
   fill($('himVoiceSel'), ttsCfg.himVoice);
   fill($('herVoiceSel'), ttsCfg.herVoice);
 }
-$('himVoiceSel').onchange = () => { ttsCfg.himVoice = $('himVoiceSel').value; LS.set('ds.tts', ttsCfg); previewVoice('him'); };
-$('herVoiceSel').onchange = () => { ttsCfg.herVoice = $('herVoiceSel').value; LS.set('ds.tts', ttsCfg); previewVoice('her'); };
+$('himVoiceSel').onchange = () => {
+  ttsCfg.himVoice = $('himVoiceSel').value; LS.set('ds.tts', ttsCfg);
+  const label = $('himVoiceSel').selectedOptions[0]?.textContent || ttsCfg.himVoice;
+  toast('♂ 男声音色：' + label);
+  previewVoice('him');
+};
+$('herVoiceSel').onchange = () => {
+  ttsCfg.herVoice = $('herVoiceSel').value; LS.set('ds.tts', ttsCfg);
+  const label = $('herVoiceSel').selectedOptions[0]?.textContent || ttsCfg.herVoice;
+  toast('♀ 女声音色：' + label);
+  previewVoice('her');
+};
 function previewVoice(role) {
-  if (!('speechSynthesis' in window)) return;
-  speechSynthesis.cancel();
+  if (!('speechSynthesis' in window)) { toast('⚠️ 浏览器不支持语音合成'); return; }
+  try { speechSynthesis.cancel(); } catch (e) {}
+  // 确保引擎未处于 paused 状态（Chrome cancel 后可能残留 paused，导致试听无声）
+  speechSynthesis.resume();
   const name = role === 'him' ? ttsCfg.himVoice : ttsCfg.herVoice;
   const u = new SpeechSynthesisUtterance(role === 'him'
     ? `你好，我是${NAME.him()}，很高兴认识你。`
     : `嗨，大家好呀，我是${NAME.her()}，欢迎收听。`);
+  u.rate = parseFloat($('rate').value);
+  let applied = '自动分配';
+  const all = speechSynthesis.getVoices();
   if (name && name !== 'auto') {
-    const v = speechSynthesis.getVoices().find(v => v.name === name);
-    if (v) { u.voice = v; u.lang = v.lang; }
+    const v = all.find(v => v.name === name);
+    if (v) { u.voice = v; u.lang = v.lang; applied = v.name; }
+    else toast('⚠️ 找不到音色「' + name + '」，将用自动分配（系统语音包可能已变化）');
   }
+  if (!u.voice) {
+    // 与播放逻辑一致的自动分配：按语言+性别挑声；仅 1 个音色时用音调区分
+    const want = LANG_NAME[$('langSel').value]?.speech || 'zh-CN';
+    const vs = all.filter(v => v.lang.startsWith(want.slice(0, 2)));
+    const isMale = roleGender(role) === 'male';
+    const FEMALE_RE = /female|xiaoxiao|xiaoyi|xiaoni|jenny|aria|michelle|nanami|elvira|sunhi|hiugaai|ting|mei|yaoyao|huihui/i;
+    const MALE_RE = /male|yunxi|yunyang|yunjian|christopher|eric|guy|keita|alvaro|injoon|wanlung|kangkang/i;
+    let pick = isMale ? vs.find(v => MALE_RE.test(v.name)) : vs.find(v => FEMALE_RE.test(v.name));
+    if (!pick && vs.length) pick = isMale ? vs[0] : vs[Math.min(1, vs.length - 1)];
+    if (pick) u.voice = pick;
+    if (vs.length <= 1) u.pitch = isMale ? 0.8 : 1.35;   // 与播放引擎同样用音调分角色
+  }
+  // 试听音量提示：paused 残留或音量被静音时用户能知道为什么不响
+  u.onstart = () => console.log('[preview] start, voice=', applied);
+  u.onerror = e => toast('⚠️ 试听播放失败：' + (e.error || 'unknown'));
   speechSynthesis.speak(u);
+  if (!speechSynthesis.speaking && !speechSynthesis.pending) {
+    toast('⚠️ 语音引擎没有响应，请再点一次试听');
+  }
 }
 $('himPreview').onclick = () => previewVoice('him');
 $('herPreview').onclick = () => previewVoice('her');
 if ('speechSynthesis' in window) {
   speechSynthesis.onvoiceschanged = renderVoicePicker;
   setTimeout(renderVoicePicker, 300);   // 嗓音列表异步加载
+  // 兜底：某些浏览器 onvoiceschanged 不触发，列表加载慢时轮询补刷
+  let vCount = -1;
+  const vpoll = setInterval(() => {
+    const n = speechSynthesis.getVoices().length;
+    if (n !== vCount) { vCount = n; renderVoicePicker(); }
+    if (n > 0) clearInterval(vpoll);
+  }, 500);
+  setTimeout(() => clearInterval(vpoll), 8000);
 }
 $('resetStyle').onclick = () => { settings = { ...DEFAULT_SETTINGS }; saveSettings(); syncForm(); applySettings(); toast('已重置'); };
 
