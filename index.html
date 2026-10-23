@@ -170,7 +170,7 @@ label.ctl { font-size: 12px; color: #ccc; display: flex; align-items: center; ga
 <body>
 <div class="app">
   <h1>🎙️ Dialog Blog Studio</h1>
-  <div class="sub">上传资料 → AI 生成男女对话博客 → 卡拉OK字幕播放（全部数据存本地浏览器）</div>
+  <div class="sub">上传资料 → AI 生成双人对话博客 → 卡拉OK字幕播放（全部数据存本地浏览器）</div>
 
   <div class="tabs">
     <button id="tab1" class="on">① 上传资料</button>
@@ -250,7 +250,7 @@ label.ctl { font-size: 12px; color: #ccc; display: flex; align-items: center; ga
       <input type="text" id="baseUrl" placeholder="Base URL，如 https://api.example.com/v1/chat/completions" style="flex:1">
     </div>
     <div class="row">
-      <button class="btn" id="genBtn">✨ AI 生成男女对话</button>
+      <button class="btn" id="genBtn">✨ AI 生成双人对谈</button>
       <span class="hint">无 Key？直接去 ② 手写对话即可</span>
     </div>
     <div id="genStatus"></div>
@@ -412,8 +412,8 @@ label.ctl { font-size: 12px; color: #ccc; display: flex; align-items: center; ga
       <div class="card">
         <div class="ttl">角色模式</div>
         <select id="roleMode" style="width:100%">
-          <option value="duo" selected>男女对话（A=男声，B=女声）</option>
-          <option value="solo">单人（同一声音说完全部）</option>
+          <option value="duo" selected>双人对谈（角色A + 角色B）</option>
+          <option value="solo">单人独白（同一声音说完全部）</option>
         </select>
         <div class="row" style="margin-top:10px"><span class="hint" style="flex:1">角色A颜色</span><input type="color" id="himColor" value="#4c8dff"></div>
         <div class="row"><span class="hint" style="flex:1">角色B颜色</span><input type="color" id="herColor" value="#ff5c8a"></div>
@@ -434,27 +434,27 @@ label.ctl { font-size: 12px; color: #ccc; display: flex; align-items: center; ga
           <option value="edge">Edge 微软声（免费，较自然）</option>
           <option value="api">OpenAI 兼容 TTS API（自定义，含本地模型服务）</option>
         </select>
-        <div class="hint" id="edgeHint" style="display:none;margin-top:8px">使用微软 Edge 的在线语音（晓晓/云希等真人感音色）。播放时会自动列出系统可用音色；若 Windows 没装对应语音包，去 设置→时间和语言→语音 添加。完全免费无限量。</div>
+        <div class="hint" id="edgeHint" style="display:none;margin-top:8px">使用微软 Edge 的在线语音（真人感音色）。播放时会自动列出系统可用音色；若 Windows 没装对应语音包，去 设置→时间和语言→语音 添加。完全免费无限量。</div>
         <div id="voicePicker" style="display:none;margin-top:8px">
-          <div class="hint" style="margin-bottom:6px">📢 下面这两个下拉是<b>本机/Edge 引擎</b>的音色选择（系统语音包），仅这两个引擎有效：</div>
-          <div class="row"><span class="hint" style="flex:1">♂ 男声音色</span>
+          <div class="hint" style="margin-bottom:6px">📢 下面这两个下拉是<b>本机/Edge 引擎</b>的音色选择（系统语音包），仅这两个引擎有效。角色A/B 可任选任意音色，不限声音类型：</div>
+          <div class="row"><span class="hint" style="flex:1">🅰 角色A音色</span>
             <select id="himVoiceSel" style="flex:1.6"></select>
             <button class="ghost" id="himPreview">试听</button>
           </div>
-          <div class="row"><span class="hint" style="flex:1">♀ 女声音色</span>
+          <div class="row"><span class="hint" style="flex:1">🅱 角色B音色</span>
             <select id="herVoiceSel" style="flex:1.6"></select>
             <button class="ghost" id="herPreview">试听</button>
           </div>
-          <div class="hint">默认「自动」按语言+性别智能挑选；也可手动指定任意系统音色。列表随系统语音包变化，Mac 上会显示苹果自带的音色。</div>
+          <div class="hint">默认「自动」挑一个区别明显的搭配；也可手动指定任意系统音色。列表随系统语音包变化，Mac 上会显示苹果自带的音色。</div>
         </div>
         <div id="ttsApiRow" style="display:none;margin-top:10px;border-top:1px dashed var(--border);padding-top:10px">
           <div class="hint" id="ttsPresetHint" style="margin-bottom:8px"></div>
           <input type="text" id="ttsUrl" placeholder="TTS Base URL，如 https://api.xx.com/v1/audio/speech" style="width:100%;margin-bottom:8px">
           <input type="password" id="ttsKey" placeholder="TTS API Key（仅存本机）" style="width:100%;margin-bottom:8px">
           <input type="text" id="ttsModel" placeholder="模型名，如 tts-1 / fish-speech-1.5" style="width:100%;margin-bottom:8px">
-          <div class="hint" style="margin-bottom:6px">📢 API 模式的音色是在<b>这里填音色名</b>（由服务商定义，如 nova/onyx），上面那两个下拉对 API 无效：</div>
-          <div class="row"><span class="hint" style="flex:1">♂ API 男声音色名</span><input type="text" id="ttsHimVoice" value="male-qn-qingse" style="width:220px"></div>
-          <div class="row"><span class="hint" style="flex:1">♀ API 女声音色名</span><input type="text" id="ttsHerVoice" value="female-shaonv" style="width:220px"></div>
+          <div class="hint" style="margin-bottom:6px">📢 API 模式的音色是在<b>这里填音色名</b>（由服务商定义，如 nova/onyx/alloy），上面那两个下拉对 API 无效：</div>
+          <div class="row"><span class="hint" style="flex:1">🅰 API 角色A音色名</span><input type="text" id="ttsHimVoice" value="alloy" style="width:220px"></div>
+          <div class="row"><span class="hint" style="flex:1">🅱 API 角色B音色名</span><input type="text" id="ttsHerVoice" value="nova" style="width:220px"></div>
           <div class="hint">请求格式：POST {model, input, voice, response_format:"mp3"}，兼容 OpenAI TTS 格式的服务</div>
         </div>
       </div>
@@ -480,7 +480,7 @@ const DEFAULT_SETTINGS = {
   stageX: 50, stageY: 70, stageW: 80,   // free 模式下的位置与宽度（百分比）
   fontFamily: "'Microsoft YaHei', sans-serif", fontSize: 30, fontWeight: '700',
   himColor: '#4c8dff', herColor: '#ff5c8a', showBubbles: true,
-  roleMode: 'duo'   // duo=男女对话 | solo=单人
+  roleMode: 'duo'   // duo=双人对谈（角色A/B） | solo=单人
 };
 let settings = { ...DEFAULT_SETTINGS, ...LS.get('ds.settings', {}) };
 let dialog = LS.get('ds.dialog', []);   // [{role:'him'|'her', text}]
@@ -564,8 +564,8 @@ const LANG_NAME = {
   ru: { label: 'Русский 俄语', speech: 'ru-RU' },
   mix: { label: '中英混合', speech: 'zh-CN' }
 };
-const DEFAULT_PROMPT = `你是播客脚本作者。把用户提供的资料改写成一段男女双人对口播博客脚本：
-- 男角色(him)与女角色(her)交替发言
+const DEFAULT_PROMPT = `你是播客脚本作者。把用户提供的资料改写成一段双人对谈口播博客脚本：
+- 角色A(him)与角色B(her)交替发言，两个角色声线/性格有区分即可，不限性别设定
 - {DUR}
 - 第一条是开场问候，最后一条是结束语（引导点赞关注）
 - 口语化、轻松自然、有来有回，覆盖资料的核心内容，不要生硬念稿
@@ -726,13 +726,13 @@ const SEG_INTRO = [
 function segPrompt() {
   const part = Math.min(seg.done, SEG_INTRO.length - 1);
   const perMin = Math.round(seg.minutes / seg.total);
-  const prev = dialog.slice(-6).map(x => (x.role === 'him' ? '男：' : '女：') + x.text).join('\n');
+  const prev = dialog.slice(-6).map(x => (x.role === 'him' ? '角色A：' : '角色B：') + x.text).join('\n');
   let p = '';
   if (seg.done === 0) {
     p = promptTpl.replace('{LANG}', LANG_REQ[seg.lang]).replace('{DUR}', durHint(perMin, seg.lang)).replace('{DOC}', docPartNow());
     p += `\n\n另外：整个脚本将分为 ${seg.total} 段连续生成，本段只是第 1 段，末尾不要说结束语。`;
   } else {
-    p = `我们在共同创作一段男女双人对口播博客脚本（目标总时长约 ${seg.minutes} 分钟，分 ${seg.total} 段生成）。
+    p = `我们在共同创作一段双人对谈口播博客脚本（目标总时长约 ${seg.minutes} 分钟，分 ${seg.total} 段生成）。
 ${SEG_INTRO[part]}
 ${LANG_REQ[seg.lang]}
 本段目标时长约 ${perMin} 分钟（约 ${perMin * 240} 个中文字或 ${perMin * 160} 个英文词）。
@@ -999,7 +999,7 @@ $('bgFile').onchange = e => {
   $(id).addEventListener('change', handler);
 });
 /* TTS settings persistence */
-const ttsCfg = LS.get('ds.tts', { engine: 'local', url: '', key: '', model: '', him: 'male-qn-qingse', her: 'female-shaonv', himVoice: 'auto', herVoice: 'auto' });
+const ttsCfg = LS.get('ds.tts', { engine: 'local', url: '', key: '', model: '', him: 'alloy', her: 'nova', himVoice: 'auto', herVoice: 'auto' });
 function syncTtsForm() {
   $('ttsEngine').value = ttsCfg.engine;
   $('ttsUrl').value = ttsCfg.url; $('ttsKey').value = ttsCfg.key; $('ttsModel').value = ttsCfg.model;
@@ -1055,26 +1055,13 @@ async function apiSpeak(item) {
   return a;
 }
 /* speak(): use API TTS if configured, else local SpeechSynthesis. Returns {audio}|null */
-/* 角色性别映射：角色A(him)/角色B(her) 的实际声音性别由设置决定 */
-function roleGender(role) {
-  // solo 模式：全部台词同一性别声；duo 模式：A=男声，B=女声
-  if (settings.roleMode === 'solo') return 'male';
-  return role === 'him' ? 'male' : 'female';
+/* 角色声线分配：双人模式下角色A/B 自动分配两个**不同**的音色；单人模式所有台词同一音色。
+   不基于性别——直接让 A 和 B 拿到不同的声音，用户也可手动指定任意音色（不限类型）。 */
+function roleSlot(role) {
+  return settings.roleMode === 'solo' ? 'A' : (role === 'him' ? 'A' : 'B');
 }
-/* 性别音色匹配（Windows SAPI + Edge Neural + macOS 全覆盖，全局唯一定义） */
-const VOICE_GENDER = {
-  female: /female|xiaoxiao|xiaoyi|xiaoni|jenny|aria|michelle|nanami|elvira|sunhi|hiugaai|hiumaan|ting|mei|yaoyao|huihui|sinji|sin-ji|mei-jia|lili|kyoko|monica|paulina|sara|zosia|milena|alva|nora|female/i,
-  male:   /male|yunxi|yunyang|yunjian|christopher|eric|guy|keita|alvaro|injoon|wanlung|kangkang|sinji[^-]?$|danny|alex|fred|aaron|male/i,
-};
-/* 跨平台挑声：按语言前缀 + 性别挑最合适音色；仅 1 个音色时返回 null（调用方用音调兜底） */
-function pickVoiceFor(langPrefix, genderKey) {
-  const all = speechSynthesis.getVoices();
-  const vs = all.filter(v => v.lang.toLowerCase().startsWith(langPrefix.toLowerCase()));
-  const re = VOICE_GENDER[genderKey];
-  let pick = vs.find(v => re.test(v.name));
-  if (!pick) pick = genderKey === 'male' ? vs[0] : vs[Math.min(1, vs.length - 1)];
-  return pick || null;
-}
+/* 自动分配策略：双人时 A 取列表第一个可用音色、B 取第一个与 A 不同的音色；
+   只有一个音色时用音调区分（A=0.9，B=1.3）。 */
 
 async function speak(item) {
   // API TTS 优先判断（必须在任何 speechSynthesis 逻辑之前）
@@ -1087,27 +1074,32 @@ async function speak(item) {
     const vs = speechSynthesis.getVoices();
     const selLang = $('langSel').value;
     const want = LANG_NAME[selLang] ? LANG_NAME[selLang].speech : 'zh-CN';
-    // Neural 音色名单（微软 Edge/自然语音，Windows 11 自带部分）
+    // Neural 音色名单（微软 Edge/自然语音）：groupA 给角色A，groupB 给角色B（两组保证不同声）
     const NEURAL = {
-      zh:    { male: /Yunxi|Yunyang|Yunjian/i, female: /Xiaoxiao|Xiaoyi|Xiaoni/i },
-      zhHK:  { male: /WanLung|HiuMaan/i,       female: /HiuGaai|HiuMaan/i },
-      en:    { male: /Christopher|Eric|Guy/i,  female: /Jenny|Aria|Michelle/i },
-      ja:    { male: /Keita/i,                 female: /Nanami/i },
-      es:    { male: /Alvaro/i,                female: /Elvira/i },
-      ko:    { male: /InJoon/i,                female: /SunHi/i },
+      zh:    { groupA: /Yunxi|Yunyang|Yunjian|Kangkang/i, groupB: /Xiaoxiao|Xiaoyi|Xiaoni|Yaoyao|Huihui/i },
+      zhHK:  { groupA: /WanLung|KaLing/i,                 groupB: /HiuMaan|HiuGaai/i },
+      en:    { groupA: /Christopher|Eric|Guy|David/i,     groupB: /Jenny|Aria|Michelle|Zira/i },
+      ja:    { groupA: /Keita|Ichiro/i,                   groupB: /Nanami|Sayaka/i },
+      es:    { groupA: /Alvaro|Pablo/i,                   groupB: /Elvira|Laura/i },
+      ko:    { groupA: /InJoon|Heami/i,                   groupB: /SunHi|Hyunsu/i },
     };
     const prefix = want.slice(0, 2);
     const pool = vs.filter(v => v.lang.startsWith(prefix));
     const nn = NEURAL[prefix === 'zh' ? (want.includes('HK') ? 'zhHK' : 'zh') : prefix] || null;
-    const genderKey = roleGender(item.role);   // 'male' | 'female'
     let voice = null;
     // 手动指定的音色优先
     const manualName = item.role === 'him' ? ttsCfg.himVoice : ttsCfg.herVoice;
     if (manualName && manualName !== 'auto') {
       voice = vs.find(v => v.name === manualName);
     }
-    if (!voice && nn) voice = pool.find(v => nn[genderKey].test(v.name)) ||
-                      pool.find(v => /Neural|Natural/i.test(v.name)) || pool[0];
+    if (!voice && nn) {
+      // 双人模式：A 取 Neural 名单第一组，B 取不同的一组；单人直接取第一组
+      const slot = roleSlot(item.role);
+      const group = slot === 'A' ? nn.groupA : nn.groupB;
+      voice = (slot === 'B' ? pool.find(v => nn.groupB.test(v.name)) : null) ||
+              pool.find(v => group.test(v.name)) ||
+              pool.find(v => /Neural|Natural/i.test(v.name)) || pool[0];
+    }
     if (voice) {
       const u = new SpeechSynthesisUtterance(item.text);
       u.voice = voice; u.lang = voice.lang; u.rate = parseFloat($('rate').value);
@@ -1129,29 +1121,30 @@ async function speak(item) {
   u.rate = parseFloat($('rate').value);
   const all = speechSynthesis.getVoices();
   const vs = all.filter(v => v.lang.startsWith(u.lang.slice(0, 2)));
-  const isMale = roleGender(item.role) === 'male';
   if (manualName && manualName !== 'auto') {
     const mv = all.find(v => v.name === manualName);
     if (mv) { u.voice = mv; u.lang = mv.lang; speechSynthesis.speak(u); return { utter: u }; }
   }
   if (vs.length) {
-    let vPick = isMale
-      ? (vs.find(v => VOICE_GENDER.male.test(v.name)) || vs[0])
-      : (vs.find(v => VOICE_GENDER.female.test(v.name)) || vs[Math.min(1, vs.length - 1)]);
-    u.voice = vPick;
-    // 男女同声兜底：系统只装了一个音色时，A/B 用音调区分（男低女高），避免两人一个声音
-    const other = isMale
-      ? vs.find(v => v !== vPick && VOICE_GENDER.female.test(v.name))
-      : vs.find(v => v !== vPick && VOICE_GENDER.male.test(v.name));
-    if (!other && vs.length === 1) {
-      u.pitch = isMale ? 0.8 : 1.35;   // 同一个声音靠音调分角色
+    // 双人模式：A 拿第一个音色，B 拿第一个不同的音色；单人拿第一个
+    const slot = roleSlot(item.role);
+    if (slot === 'A' || settings.roleMode === 'solo') {
+      u.voice = vs[0];
+      if (settings.roleMode === 'solo') {
+        // 单人：同一声音同一音调，不做区分
+      } else if (!vs[1]) {
+        u.pitch = 0.9;   // 只有一个音色，A 稍低音调
+      }
+    } else {
+      u.voice = vs[1] || vs[0];
+      if (!vs[1]) u.pitch = 1.3;   // B 与 A 共用唯一音色，稍高音调区分
     }
   }
   speechSynthesis.speak(u);
   return { utter: u };
 }
 
-/* --- 音色选择器（男/女下拉 + 试听） --- */
+/* --- 音色选择器（角色A/B 下拉 + 试听） --- */
 function renderVoicePicker() {
   const show = ['local', 'edge'].includes(ttsCfg.engine);
   $('voicePicker').style.display = show ? '' : 'none';
@@ -1178,14 +1171,14 @@ function renderVoicePicker() {
 $('himVoiceSel').onchange = () => {
   ttsCfg.himVoice = $('himVoiceSel').value; LS.set('ds.tts', ttsCfg);
   const label = $('himVoiceSel').selectedOptions[0]?.textContent || ttsCfg.himVoice;
-  toast('♂ 男声音色：' + label);
+  toast('🅰 角色A音色：' + label);
   hotApplyTts();
   previewVoice('him');
 };
 $('herVoiceSel').onchange = () => {
   ttsCfg.herVoice = $('herVoiceSel').value; LS.set('ds.tts', ttsCfg);
   const label = $('herVoiceSel').selectedOptions[0]?.textContent || ttsCfg.herVoice;
-  toast('♀ 女声音色：' + label);
+  toast('🅱 角色B音色：' + label);
   hotApplyTts();
   previewVoice('her');
 };
@@ -1207,15 +1200,17 @@ function previewVoice(role) {
     else toast('⚠️ 找不到音色「' + name + '」，将用自动分配（系统语音包可能已变化）');
   }
   if (!u.voice) {
-    // 与播放逻辑一致的自动分配：按语言+性别挑声；仅 1 个音色时用音调区分
+    // 与播放逻辑一致的自动分配：双人模式 A 拿第一个、B 拿不同的；仅 1 个音色时用音调区分
     const want = LANG_NAME[$('langSel').value]?.speech || 'zh-CN';
     const vs = all.filter(v => v.lang.startsWith(want.slice(0, 2)));
-    const isMale = roleGender(role) === 'male';
-    const pick = isMale
-      ? (vs.find(v => VOICE_GENDER.male.test(v.name)) || vs[0])
-      : (vs.find(v => VOICE_GENDER.female.test(v.name)) || vs[Math.min(1, vs.length - 1)]);
-    if (pick) u.voice = pick;
-    if (vs.length <= 1) u.pitch = isMale ? 0.8 : 1.35;   // 与播放引擎同样用音调分角色
+    const slot = roleSlot(role);
+    if (slot === 'A' || settings.roleMode === 'solo') {
+      if (vs[0]) u.voice = vs[0];
+      if (vs.length <= 1 && settings.roleMode !== 'solo') u.pitch = 0.9;
+    } else {
+      if (vs[1] || vs[0]) u.voice = vs[1] || vs[0];
+      if (vs.length <= 1) u.pitch = 1.3;
+    }
   }
   // 试听音量提示：paused 残留或音量被静音时用户能知道为什么不响
   u.onstart = () => console.log('[preview] start, voice=', applied);
