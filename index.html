@@ -493,7 +493,7 @@ label.ctl { font-size: 12px; color: var(--muted); display: flex; align-items: ce
         </select>
         <div class="hint" id="edgeHint" style="display:none;margin-top:8px">使用微软 Edge 的在线语音（真人感音色）。播放时会自动列出系统可用音色；若 Windows 没装对应语音包，去 设置→时间和语言→语音 添加。完全免费无限量。</div>
         <div id="voicePicker" style="display:none;margin-top:8px">
-          <div class="hint" style="margin-bottom:6px">📢 下面这两个下拉是<b>本机/Edge 引擎</b>的音色选择（系统语音包），仅这两个引擎有效。角色A/B 可任选任意音色，不限声音类型：</div>
+          <div class="hint" style="margin-bottom:6px">📢 下面这两个下拉是<b>本机/Edge 引擎</b>的音色选择（系统语音包），仅这两个引擎有效。角色A/B 可任选任意音色，不限声音类型。下拉若显示"加载中"，点一下页面任意处再展开即可。</div>
           <div class="row"><span class="hint" style="flex:1">🅰 角色A音色</span>
             <select id="himVoiceSel" style="flex:1.6"></select>
             <button class="ghost" id="himPreview">试听</button>
@@ -1221,6 +1221,8 @@ function renderVoicePicker() {
   $('voicePicker').style.display = show ? '' : 'none';
   if (!show || !('speechSynthesis' in window)) return;
   const fill = (sel, cur) => {
+    // 记住用户当前选中项：音色列表重绘时不打断/不重置用户正在查看的选择
+    const prev = sel.value;
     sel.innerHTML = '';
     const vs = speechSynthesis.getVoices();
     const auto = document.createElement('option');
@@ -1234,7 +1236,9 @@ function renderVoicePicker() {
       o.textContent = `${v.name} · ${v.lang}`;
       sel.appendChild(o);
     });
-    sel.value = vs.some(v => v.name === cur) || cur === 'auto' ? cur : 'auto';
+    const want = vs.some(v => v.name === cur) || cur === 'auto' ? cur : 'auto';
+    // 优先保持用户刚选的值（prev），避免列表重绘时视觉跳回
+    sel.value = vs.some(v => v.name === prev) ? prev : want;
   };
   fill($('himVoiceSel'), ttsCfg.himVoice);
   fill($('herVoiceSel'), ttsCfg.herVoice);
@@ -1296,15 +1300,18 @@ $('herPreview').onclick = () => previewVoice('her');
 if ('speechSynthesis' in window) {
   speechSynthesis.onvoiceschanged = renderVoicePicker;
   setTimeout(renderVoicePicker, 300);   // 嗓音列表异步加载
-  // 跨平台兜底：Safari/Firefox/部分 Chrome 的 onvoiceschanged 不触发或多次触发，
-  // 用轮询侦测音色列表变化，变化即重绘下拉（Mac/iPhone 上尤其必要）
+  // 跨平台兜底轮询：部分浏览器 getVoices() 在首次语音播放前返回空，
+  // 因此轮询**永不提前停止**（只是列表无变化时跳过重绘，开销极低）
   let vSig = '';
-  const vpoll = setInterval(() => {
+  setInterval(() => {
     const sig = speechSynthesis.getVoices().map(v => v.name).sort().join('|');
     if (sig !== vSig) { vSig = sig; renderVoicePicker(); }
-    if (sig && $('himVoiceSel').options.length > 3) clearInterval(vpoll);   // 列表就绪且已渲染
-  }, 500);
-  setTimeout(() => clearInterval(vpoll), 15000);
+  }, 800);
+  // 首次点按页面任意处时强制刷一次（iOS Safari 需要用户手势后 getVoices 才返回列表）
+  document.addEventListener('pointerdown', function warmup() {
+    const vs = speechSynthesis.getVoices();
+    if (vs.length) { speechSynthesis.onvoiceschanged?.(new Event('voiceschanged')); document.removeEventListener('pointerdown', warmup); }
+  }, { once: false });
 }
 $('resetStyle').onclick = () => { settings = { ...DEFAULT_SETTINGS }; saveSettings(); syncForm(); applySettings(); toast('已重置'); };
 
