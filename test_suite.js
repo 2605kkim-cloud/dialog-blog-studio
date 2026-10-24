@@ -51,7 +51,10 @@ check('导出: 背景图加载超时保护', src.includes('setTimeout(r, 3000)')
 // ---------- E. Playback chain ----------
 check('播放: onboundary 逐字同步', src.includes('u.onboundary = e =>'));
 check('播放: 模式B 加权映射与导出一致', src.includes('weightedDone(item.text, a.currentTime / a.duration)'));
-check('播放: speechClock 语速校准', src.includes('speechClock.rate'));
+check('播放: speechClock 按音色分键校准', src.includes('speechClock[vKey]') && src.includes('滑动平均'));
+check('播放: macOS 默认语速 200 字/分', src.includes('200 * parseFloat'));
+check('播放: 空闲检测需连续 2 次（防 macOS 停顿误判）', src.includes('idleStreak >= 2'));
+check('播放: 模式C 帧 setInterval 驱动（后台安全）', src.includes('const iv = setInterval(() => {'));
 check('播放: onend 120ms 扫满（不瞬间跳）', src.includes('120ms 快速扫过'));
 check('播放: 句间自适应停顿', src.includes('模拟真人对话换气'));
 check('播放: API 预取下一句', src.includes('function prefetchAudio'));

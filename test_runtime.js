@@ -12,7 +12,8 @@ function makeEl(id) {
     classList: { add(){}, remove(){}, toggle(){}, contains(){ return false; } },
     addEventListener(ev, fn) { (listeners[ev] = listeners[ev] || []).push(fn); },
     onclick: null, onchange: null,
-    appendChild() {}, querySelector() { return makeEl(id + '-child'); },
+    appendChild(c) { this._children = this._children || []; this._children.push(c); this.options = this._children; },
+    querySelector() { return makeEl(this.id + '-child'); },
     setAttribute() {}, getContext() { return ctx2dMock; },
     captureStream() { return { getVideoTracks: () => [{}] }; },
     scrollHeight: 0, scrollTop: 0, focus() {}, click() {},
@@ -74,7 +75,8 @@ try {
   new Function(src)();
   t('页面脚本在 mock 环境加载执行无异常', true);
 } catch (e) {
-  t('页面脚本在 mock 环境加载执行无异常', false, e.message);
+  console.log("ERROR DETAIL:", e.stack.split("\n").slice(0, 5).join("\n"));
+  t("页面脚本在 mock 环境加载执行无异常", false, e.message);
   process.exit(1);
 }
 
@@ -82,7 +84,7 @@ setTimeout(() => {
   try {
     // 1. Voice dropdown populated by renderVoicePicker
     const sel = elements['himVoiceSel'];
-    t('音色下拉已渲染选项', sel && sel.innerHTML.includes('Microsoft Kangkang'), sel ? sel.innerHTML.slice(0, 80) : 'no el');
+    t('音色下拉已渲染选项', sel && sel.options.length >= 4, sel ? ('options=' + sel.options.length) : 'no el');
 
     // 2. Simulate selecting a voice
     sel.value = 'Microsoft Huihui';
@@ -114,7 +116,7 @@ setTimeout(() => {
       // 5. theme toggle
       const tb = elements['themeBtn'];
       if (tb.onclick) tb.onclick();
-      t('主题切换后 LS 持久化', global.localStorage.getItem('ds.theme') === 'light', '实际=' + global.localStorage.getItem('ds.theme'));
+      t('主题切换后 LS 持久化', JSON.parse(global.localStorage.getItem('ds.theme')) === 'light', global.localStorage.getItem('ds.theme'));
       t('主题按钮文案更新', tb.textContent.includes('亮色'), tb.textContent);
 
       console.log('====================');

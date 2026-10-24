@@ -1493,7 +1493,9 @@ async function playLine() {
     const advance = w => { if (w > done) { done = Math.min(w, total); paintKaraoke(item, done); if (span) paint(span, item.text, done); } };
     const finish = () => { if (!finished) { finished = true; paintKaraoke(item, total); if (span) paint(span, item.text, total); resolve(); } };
     const t0 = performance.now();
-    // —— 模式A：onboundary 逐字同步（本机 SAPI 声会触发；Edge Neural 在部分系统不触发）——
+    let elapsed = 0;   // 模式C 使用的连续播放时长（暂停期间不累计）
+    // —— 模式A：onboundary 逐字同步（Windows SAPI 声会触发；macOS Apple 语音在
+    //    Chrome 上常不触发，此时落模式C；Safari 触发较可靠）——
     let boundarySeen = false;
     if (tts && tts.utter) {
       const u = tts.utter;
@@ -1506,14 +1508,19 @@ async function playLine() {
           }
         };
       }
-      // 语音结束：记录实测时长用于校准，并快速补齐结束本句
+      // 语音结束：按当前音色分键记录实测时长用于校准，并快速补齐结束本句
       u.onend = () => {
         if (!playing) return;
         try {
           const actualMs = performance.now() - t0;
           if (actualMs > 500) {
-            speechClock.rate = total / (actualMs / 60000);   // 实测字/分钟
-            speechClock.n = Math.min(speechClock.n + 1, 20);
+            const vKey = u.voice ? u.voice.name : '_default';
+            const entry = speechClock[vKey] || { rate: 0, n: 0 };
+            // 滑动平均：新旧按 3:1 混合，换音色后 2~3 句即收敛到该音色的真实语速
+            entry.rate = entry.n >= 2 ? (entry.rate * 3 + total / (actualMs / 60000)) / 4 : total / (actualMs / 60000);
+            entry.n = Math.min(entry.n + 1, 20);
+            speechClock[vKey] = entry;
+            speechClock._default = entry;
             LS.set('ds.speechClock', speechClock);
           }
         } catch (e) {}
@@ -1546,8 +1553,11 @@ async function playLine() {
       tts.audio.onended = () => { if (audioTick) clearInterval(audioTick); if (playing && !paused) finish(); };
     }
     // —— 模式C：无逐字信号时，按「预计总时长 + ease-out 曲线」推进 ——
-    // 预计总时长 = 用历史实测语速（speechClock）算，没有历史才退回 260字/分钟默认值
-    const estCharMin = speechClock.n >= 2 ? speechClock.rate : 260 * parseFloat($('rate').value);
+    // 预计总时长 = 用历史实测语速（按当前音色分键校准）算；无历史时
+    // macOS Apple 语音实际约 190 字/分钟（比 Windows 慢），默认取 200。
+    const voiceKey = (tts && tts.utter && tts.utter.voice) ? tts.utter.voice.name : '_default';
+    const clockEntry = speechClock[voiceKey] || speechClock._default || { rate: 0, n: 0 };
+    const estCharMin = clockEntry.n >= 2 ? clockEntry.rate : 200 * parseFloat($('rate').value);
     const estMs = total / estCharMin * 60000;
     // 语音引擎假死看门狗：估算时长 + 3 秒后若 speechSynthesis 已空闲却没触发 onend/onerror
     // （Chrome 已知 bug：cancel 后 utterance 事件丢失），直接收尾进下一句
@@ -1556,29 +1566,35 @@ async function playLine() {
       const idle = !('speechSynthesis' in window) || !speechSynthesis.speaking && !speechSynthesis.pending;
       if (idle) finish();
     }, estMs + 3000);
-    // 引擎空闲提前收尾：每 200ms 查一次，语音已停且字幕已过 85% 就直接收尾
-    // （比等固定 watchdog 更快衔接下一句，消除句间"突然安静很久"的感觉）
+    // 引擎空闲提前收尾：连续 2 次（间隔 200ms）检测到引擎空闲且字幕已过 85% 才收尾。
+    // macOS Chrome 在长停顿（句中逗号）期间 speaking 会瞬时报告 false —— 单次检测
+    // 会把字幕提前跳满，造成"语音还没念完字幕先完"的不同步观感。
+    let idleStreak = 0;
     const idleCheck = setInterval(() => {
       if (finished || !playing || paused) { clearInterval(idleCheck); return; }
       if (tts && tts.audio) return;   // API 音频有自己的 onended
       if (!('speechSynthesis' in window)) return;
       const idle = !speechSynthesis.speaking && !speechSynthesis.pending;
-      if (idle && done >= total * 0.85) { clearInterval(idleCheck); finish(); }
+      idleStreak = idle ? idleStreak + 1 : 0;
+      if (idleStreak >= 2 && done >= total * 0.85) { clearInterval(idleCheck); finish(); }
     }, 200);
-    function tick(now) {
-      if (!playing) { if (audioTick) clearInterval(audioTick); finish(); return; }
-      if (paused) { requestAnimationFrame(tick); return; }
+    // 帧驱动：setInterval(33ms)（rAF 在 macOS 后台窗口/遮挡时也冻结）
+    let lastTick = t0;
+    const iv = setInterval(() => {
+      const now = performance.now();
+      const dt = now - lastTick;
+      lastTick = now;
+      if (!playing) { clearInterval(iv); finish(); return; }
+      if (paused) return;   // 暂停不推进（时钟用连续累计，恢复自动接续）
       const hasSignal = boundarySeen || (tts && tts.audio && isFinite(tts.audio.duration) && tts.audio.duration > 0);
       if (!hasSignal) {
-        const elapsed = now - t0;
+        elapsed += dt;
         // ease-out：前段快后段慢（模拟语音开头密、结尾拖音），封顶 96%，最后由 onend 补满
         const ratio = Math.min(elapsed / estMs, 1);
         const eased = ratio >= 1 ? 0.96 : 1 - Math.pow(1 - ratio, 1.6);
         advance(Math.floor(eased * total));
       }
-      requestAnimationFrame(tick);
-    }
-    requestAnimationFrame(tick);
+    }, 33);
   });
   // if API audio still playing, wait it out (audio longer than subtitle)
   if (tts && tts.audio) {
