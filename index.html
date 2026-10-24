@@ -1164,11 +1164,13 @@ async function speak(item) {
       voice = vs.find(v => v.name === manualName);
     }
     if (!voice && nn) {
-      // 双人模式：A 取 Neural 名单第一组，B 取不同的一组；单人直接取第一组
+      // 双人模式：A 取 groupA，B 优先 groupB（保证与 A 不同声）；单人模式一律取 groupA
       const slot = roleSlot(item.role);
-      const group = slot === 'A' ? nn.groupA : nn.groupB;
-      voice = (slot === 'B' ? pool.find(v => nn.groupB.test(v.name)) : null) ||
-              pool.find(v => group.test(v.name)) ||
+      const solo = settings.roleMode === 'solo';
+      voice = (!solo && slot === 'B'
+        ? pool.find(v => nn.groupB.test(v.name))
+        : null) ||
+              pool.find(v => nn.groupA.test(v.name)) ||
               pool.find(v => /Neural|Natural/i.test(v.name)) || pool[0];
     }
     if (voice) {
