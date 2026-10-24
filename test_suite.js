@@ -39,7 +39,7 @@ check('导出: setInterval(33) 帧循环（后台不冻结）', src.includes('co
 const exportZone = src.slice(src.indexOf('正在渲染'), src.indexOf('正在封装'));
 check('导出: rAF 已从导出循环移除', !/requestAnimationFrame\(frame\)/.test(exportZone));
 check('导出: 暂停期间 elapsedBase 不增长', /if \(pausedFlag\) return;[\s\S]{0,80}elapsedBase \+= dt/.test(src));
-check('导出: 有音频时字幕对齐 currentTime', src.includes('audio.currentTime / audio.duration * total'));
+check('导出: 有音频时字幕加权对齐 currentTime', src.includes('weightedDone(item.text, audio.currentTime / audio.duration)'));
 check('导出: 气泡绘制（与播放器一致）', src.includes('settings.exportBubbles !== false'));
 check('导出: roundRect 兼容垫片', src.includes('function roundRectPath'));
 check('导出: 静音铺底保音轨', src.includes('silentGain.gain.value = 0'));
@@ -50,6 +50,7 @@ check('导出: 背景图加载超时保护', src.includes('setTimeout(r, 3000)')
 
 // ---------- E. Playback chain ----------
 check('播放: onboundary 逐字同步', src.includes('u.onboundary = e =>'));
+check('播放: 模式B 加权映射与导出一致', src.includes('weightedDone(item.text, a.currentTime / a.duration)'));
 check('播放: speechClock 语速校准', src.includes('speechClock.rate'));
 check('播放: onend 120ms 扫满（不瞬间跳）', src.includes('120ms 快速扫过'));
 check('播放: 句间自适应停顿', src.includes('模拟真人对话换气'));

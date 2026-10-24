@@ -1482,7 +1482,8 @@ async function playLine() {
 
   /* —— 字幕进度驱动 ——
      模式A（最准）：本机/Edge 朗读用 utterance.onboundary 逐字事件，语音读到哪字幕点到哪。
-     模式B：API TTS 用 audio.currentTime 实时映射字幕进度。
+     模式B：API TTS 用 audio.currentTime 加权映射字幕进度（charWeight：标点/CJK/英文/
+            空格各按实际朗读耗时加权，长句不漂移）。
      模式C：无逐字信号时 —— 语音结束已知（onend），用「已用时长 / 预计总时长」的
             单调曲线推进（前快后慢的 ease-out 近似语音节奏），语音一结束立即补齐。
             预计总时长用「首次实测朗读耗时」在线校准（存 LS，越播越准）。 */
@@ -1532,14 +1533,14 @@ async function playLine() {
       };
       u.onerror = () => { if (playing) finish(); };
     }
-    // —— 模式B：API 音频用 currentTime 实时驱动 ——
+    // —— 模式B：API 音频用 currentTime 加权映射（与导出引擎一致，长句不漂移）——
     let audioTick = null;
     if (tts && tts.audio) {
       audioTick = setInterval(() => {
         if (!playing || paused) return;
         const a = tts.audio;
         if (isFinite(a.duration) && a.duration > 0) {
-          advance(Math.floor(a.currentTime / a.duration * total));
+          advance(weightedDone(item.text, a.currentTime / a.duration));
         }
       }, 80);
       tts.audio.onended = () => { if (audioTick) clearInterval(audioTick); if (playing && !paused) finish(); };
@@ -1821,6 +1822,44 @@ function wrapText(c, text, maxW) {
   }
   if (line) lines.push(line);
   return lines;
+}
+/* ===== 卡拉OK字符权重时间轴 =====
+   线性均分（currentTime/duration × 字数）假设 TTS 匀速朗读，实际语音有标点停顿、
+   英文按词读、数字按位读 —— 长句中段起高亮明显漂移。这里给每个字符一个
+   「朗读时长权重」，把音频进度映射到加权累计位置上，高亮跟随语音节奏。 */
+function charWeight(ch) {
+  if (/[，。！？；：、,.!?;:]/.test(ch)) return 0.55;    // 标点：短暂停顿但读得快
+  if (/[一-鿿]/.test(ch)) return 1;                      // CJK：每字等长
+  if (/[0-9]/.test(ch)) return 0.75;                     // 数字逐位读
+  if (/[a-zA-Z]/.test(ch)) return 0.55;                  // 英文按词读，摊到字符较轻
+  if (/\s/.test(ch)) return 0.25;                        // 空格不发音
+  return 0.8;                                            // 其他符号
+}
+/* 预计算一句的权重前缀和（缓存 per 句文本），返回 {cum, total} */
+const weightCache = new Map();
+function charTimeline(text) {
+  let tl = weightCache.get(text);
+  if (!tl) {
+    const cum = [0];   // cum[i] = 前 i 个字符的权重和
+    let sum = 0;
+    for (const ch of text) { sum += charWeight(ch); cum.push(sum); }
+    tl = { cum, total: sum };
+    weightCache.set(text, tl);
+    if (weightCache.size > 400) weightCache.delete(weightCache.keys().next().value);
+  }
+  return tl;
+}
+/* 给定音频播放比例 ratio (0~1)，返回应高亮到第几个字符（加权映射） */
+function weightedDone(text, ratio) {
+  const { cum, total } = charTimeline(text);
+  const target = ratio * total;
+  // 二分查找第一个 cum > target 的位置
+  let lo = 0, hi = cum.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (cum[mid + 1] <= target) lo = mid + 1; else hi = mid;
+  }
+  return Math.min(lo + 1, text.length);
 }
 /* roundRect 兼容垫片（老浏览器无 ctx.roundRect） */
 function roundRectPath(c, x, y, w, h, r) {
@@ -2114,8 +2153,8 @@ $('export4kBtn').onclick = async () => {
         elapsedBase += dt;        // 累计真实播放时长（暂停时间被自动排除）
         let done;
         if (audio && isFinite(audio.duration) && audio.duration > 0 && !audio.paused) {
-          // 音频进度优先（实时跟语音走；audio.currentTime 已含 playbackRate 影响）
-          done = Math.floor(audio.currentTime / audio.duration * total);
+          // 音频进度优先：加权映射（标点/英文/空格权重不同，高亮跟随语音节奏而非匀速线性）
+          done = weightedDone(item.text, audio.currentTime / audio.duration);
         } else {
           done = Math.floor(elapsedBase / durMs * total);
         }
