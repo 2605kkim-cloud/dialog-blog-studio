@@ -196,10 +196,15 @@ input[type=color] { width: 42px; height: 32px; border: 1px solid var(--border); 
 #playerWrap.recording #playerControls { opacity: 1; }
 #playerWrap.clean #playerControls { opacity: 1; }
 #playerControls button {
-  background: rgba(255,255,255,.12); color: #fff; border: 1px solid rgba(255,255,255,.2);
-  padding: 8px 18px; border-radius: 999px; font-size: 13px; cursor: pointer;
+  background: var(--input-bg); color: var(--text); border: 1px solid var(--border);
+  padding: 8px 18px; border-radius: 999px; font-size: 14px; font-weight: 600; cursor: pointer;
+  transition: border-color .15s ease, background .15s ease;
 }
+#playerControls button:hover:not(:disabled) { border-color: var(--accent); }
 #playerControls button:disabled { opacity: .35; cursor: not-allowed; }
+#playerControls select { padding: 8px 10px; font-size: 13px; }
+#playerControls .hint { font-size: 12px; }
+#playerControls label.ctl { font-size: 14px; }
 label.ctl { font-size: 13px; color: var(--text); display: flex; align-items: center; gap: 6px; }
 
 /* settings grid */
@@ -1840,12 +1845,18 @@ if (settings.bgImg) { const im = new Image(); im.src = settings.bgImg; bgImageEl
 function drawWave(c, x, y, w, h, color, t) {
   c.fillStyle = color;
   const n = 15, gap = w / n * 0.45, bw = w / n * 0.55;
+  // 与播放器 CSS 动画同款节奏：每根柱子独立的正弦呼吸 + 顶端圆角。
+  // 关键差异修复：相位随时间连续推进（t 已是秒），柱高变化平滑不突变；
+  // 振幅包络走低频正弦，模拟"音乐强弱句"而不是匀速抖动。
   for (let i = 0; i < n; i++) {
-    const ph = Math.sin(t * 5 + i * 1.7) * 0.5 + 0.5;
-    const bh = h * (0.15 + ph * 0.85);
-    c.globalAlpha = 0.55 + ph * 0.45;
+    const phase = t * 3.2 + i * 0.9;
+    const ph = Math.sin(phase) * 0.5 + 0.5;
+    const env = Math.sin(t * 1.1 + i * 0.35) * 0.5 + 0.5;   // 慢速包络：强弱起伏
+    const bh = h * (0.18 + ph * 0.62 + env * 0.2);
+    c.globalAlpha = 0.5 + ph * 0.5;
     c.beginPath();
-    c.roundRect(x + i * (bw + gap), y + (h - bh) / 2, bw, bh, bw / 2);
+    if (c.roundRect) c.roundRect(x + i * (bw + gap), y + (h - bh) / 2, bw, bh, bw / 2);
+    else roundRectPath(c, x + i * (bw + gap), y + (h - bh) / 2, bw, bh, bw / 2);
     c.fill();
   }
   c.globalAlpha = 1;
@@ -2054,6 +2065,7 @@ $('export4kBtn').onclick = async () => {
     silentGain.gain.value = 0;
     silent.connect(silentGain).connect(destNode);
     silent.start();
+    window._silentOsc = silent;   // 导出结束时停止（持续振荡器会让部分播放器把文件当直播流，进度条不可拖）
   } catch (e) { console.warn('AudioContext 初始化失败', e); }
   const tracks = [...stream.getVideoTracks(), ...(destNode ? destNode.stream.getAudioTracks() : [])];
   const rec = new MediaRecorder(new MediaStream(tracks), { mimeType: mime, videoBitsPerSecond: exportBitrate() });
@@ -2171,7 +2183,9 @@ $('export4kBtn').onclick = async () => {
           }
           await new Promise(r => { audio.onloadedmetadata = r; setTimeout(r, 2000); });
           if (isFinite(audio.duration) && audio.duration > 0) durMs = audio.duration * 1000 / parseFloat($('rate').value);
-          audio.play().catch(() => {});
+          // Mac/iOS 长循环中 AudioContext 可能被系统挂起，每次播放前强制 resume
+          await actxRef.resume().catch(() => {});
+          await audio.play().catch(e => { st.textContent = '⚠️ 语音播放失败：' + e.message; });
           recdur.push(audio);
         }
       } catch (e) { st.textContent = '⚠️ TTS 失败改用静音渲染：' + e.message; }
@@ -2219,7 +2233,11 @@ $('export4kBtn').onclick = async () => {
   drawFrame(ctx, W, H, dialog[dialog.length - 1], dialog[dialog.length - 1].text.length, 0);
   $('exportBar').style.width = '100%';
   $('exportPct').textContent = '100% · 正在封装文件…';
-  setTimeout(() => rec.state !== 'inactive' && rec.stop(), 800);
+  // 收尾三部曲：停掉持续振荡器 → 关闭 AudioContext → 停录制。
+  // 顺序很重要：振荡器不停，部分播放器把文件当直播流（时长未知 → 进度条不可拖）。
+  try { if (window._silentOsc) { window._silentOsc.stop(); window._silentOsc.disconnect(); } } catch (e) {}
+  try { if (actxRef) actxRef.close(); } catch (e) {}
+  setTimeout(() => rec.state !== 'inactive' && rec.stop(), 300);
 };
 
 /* 用系统默认/Edge 浏览器打开当前页面的提示 */
