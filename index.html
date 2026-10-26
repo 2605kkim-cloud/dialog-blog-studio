@@ -379,6 +379,7 @@ label.ctl { font-size: 12px; color: var(--muted); display: flex; align-items: ce
         <option value="4K">4K（超清）</option>
       </select>
       <span class="hint" id="sizeEst">≈ --</span>
+      <span class="hint" id="voiceUsedBadge" style="color:var(--muted);font-size:11px"></span>
     </div>
     <div id="exportProgress" style="display:none;max-width:640px;margin:10px auto 0">
       <div style="background:var(--bg);border-radius:6px;height:18px;overflow:hidden;border:1px solid var(--border)">
@@ -1161,7 +1162,9 @@ async function speak(item) {
     // 手动指定的音色优先
     const manualName = item.role === 'him' ? ttsCfg.himVoice : ttsCfg.herVoice;
     if (manualName && manualName !== 'auto') {
-      voice = vs.find(v => v.name === manualName);
+      // Mac 兼容：精确匹配失败时做前后缀包含匹配（Apple 音色名带本地化后缀）
+      voice = vs.find(v => v.name === manualName) ||
+              vs.find(v => v.name.startsWith(manualName) || manualName.startsWith(v.name));
     }
     if (!voice && nn) {
       // 双人模式：A 取 groupA，B 优先 groupB（保证与 A 不同声）；单人模式一律取 groupA
@@ -1195,8 +1198,11 @@ async function speak(item) {
   const all = speechSynthesis.getVoices();
   const vs = all.filter(v => v.lang.startsWith(u.lang.slice(0, 2)));
   if (manualName && manualName !== 'auto') {
-    const mv = all.find(v => v.name === manualName);
+    // Mac 兼容：Apple 音色名可能带本地化后缀（如「Ting-Ting（中文）」），精确匹配失败时做包含匹配
+    let mv = all.find(v => v.name === manualName);
+    if (!mv) mv = all.find(v => v.name.startsWith(manualName) || manualName.startsWith(v.name));
     if (mv) { u.voice = mv; u.lang = mv.lang; speechSynthesis.speak(u); return { utter: u }; }
+    else toast('⚠️ 找不到音色「' + manualName + '」，用自动分配（下拉重新选一次可刷新列表）');
   }
   if (vs.length) {
     // 双人模式：A 拿第一个音色，B 拿第一个不同的音色；单人拿第一个
@@ -1503,11 +1509,25 @@ async function playLine() {
         u.onboundary = e => {
           if (!playing || paused) return;
           if (e.charIndex != null) {
+            // Mac 兼容：部分引擎的 charIndex 按词/字节报，可能越界或回跳。
+            // 加三重保险：1) 不越界 2) 单调不减 3) 单次跳幅不超过总长 60%（跳幅异常视为事件流不可信，弃用 boundary 改走模式C）
+            const ci = e.charIndex;
+            if (ci < 0 || ci > total) return;
+            if (ci + (e.charLength || 1) < done) return;           // 回跳，忽略
+            if (done > 0 && ci - done > total * 0.6) { boundarySeen = false; return; }  // 异常跳幅
             boundarySeen = true;
-            advance(e.charIndex + (e.charLength || 1));
+            advance(ci + (e.charLength || 1));
           }
         };
       }
+      // 实际使用音色的可视诊断（Mac 上音色是否生效一眼可见）
+      u.onstart = () => {
+        if (tts.utter === u) {
+          const vName = u.voice ? u.voice.name : '(默认音色)';
+          const el = $('voiceUsedBadge');
+          if (el) el.textContent = '🔊 ' + (u.voice ? u.voice.name + ' · ' + u.voice.lang : '默认音色');
+        }
+      };
       // 语音结束：按当前音色分键记录实测时长用于校准，并快速补齐结束本句
       u.onend = () => {
         if (!playing) return;
@@ -1520,7 +1540,6 @@ async function playLine() {
             entry.rate = entry.n >= 2 ? (entry.rate * 3 + total / (actualMs / 60000)) / 4 : total / (actualMs / 60000);
             entry.n = Math.min(entry.n + 1, 20);
             speechClock[vKey] = entry;
-            speechClock._default = entry;
             LS.set('ds.speechClock', speechClock);
           }
         } catch (e) {}
